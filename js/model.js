@@ -10,6 +10,39 @@
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const round1 = (v) => Math.round(v * 10) / 10;
 
+  // ---------------------------------------------------------------------------------
+  // 0. SOURCED PUBLIC-OPINION DATA (data/polling.js)
+  // Approval = simple average of the qualifying (non-sponsored) polls listed for each
+  // governor; governors with no qualifying poll get the median of all sourced values
+  // (a neutral midpoint). National numbers average several aggregators.
+  // ---------------------------------------------------------------------------------
+  const P = G.POLLING;
+  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+  const median = (a) => { const b = [...a].sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
+  M.pollMargin = (poll) => (poll.margin != null ? poll.margin : poll.D != null && poll.R != null ? poll.D - poll.R : null);
+  if (P) {
+    G.NATIONAL_OPINION.presidentApproval = P.national.presidentApproval.value;
+    G.NATIONAL_OPINION.genericBallot = P.national.genericBallot.value;
+    G.NATIONAL_OPINION.asOf = P.asOf;
+    const sourced = {};
+    for (const [st, a] of Object.entries(P.governorApproval)) if (a.polls.length) sourced[st] = Math.round(mean(a.polls.map((x) => x.approve)) * 10) / 10;
+    M.approvalMedian = median(Object.values(sourced));
+    for (const [st, g] of Object.entries(G.GOVERNORS)) {
+      const a = P.governorApproval[st] ?? { polls: [] };
+      g.approval = sourced[st] ?? M.approvalMedian;
+      g.approvalInfo = { ...a, value: g.approval, imputed: sourced[st] == null };
+    }
+    for (const [st, e] of Object.entries(P.events)) {
+      if (e.governor === "lost-primary") { G.GOVERNORS[st].status2026 = "lost-primary"; G.GOVERNORS[st].event = e; }
+      if (e.governor === "nominated") G.GOVERNORS[st].event = e;
+      if (e.governorNote) G.GOVERNORS[st].note = e.governorNote;
+    }
+    for (const [key, u] of Object.entries(P.indicatorUpdates)) {
+      const i = G.INDICATOR_COLUMNS.indexOf(key);
+      for (const [st, v] of Object.entries(u.values)) if (G.STATE_INDICATORS[st]) G.STATE_INDICATORS[st][i] = v;
+    }
+  }
+
   M.states = Object.fromEntries(G.STATES_META.map(([fips, abbr, name, seats]) => [abbr, { fips, abbr, name, seats }]));
   M.stateByFips = Object.fromEntries(G.STATES_META.map(([fips, abbr]) => [fips, abbr]));
   M.partyName = { R: "Republican", D: "Democratic", I: "Independent", O: "Other" };
@@ -285,7 +318,7 @@
     NH: { status: "open", note: "Jeanne Shaheen is retiring." },
     NC: { status: "open", note: "Thom Tillis is retiring." },
     WY: { status: "open", note: "Cynthia Lummis is retiring." },
-    TX: { status: "uncertain", note: "Incumbent faced a contested Republican primary; nominee may differ from the incumbent." },
+    TX: { status: "open", note: "John Cornyn lost the May 26, 2026 GOP runoff to Ken Paxton." },
     OK: { status: "uncertain", note: "Appointed senator; candidacy status not confirmed in this dataset." },
     SC: { status: "uncertain", note: "Appointed senator; candidacy status not confirmed in this dataset." },
     NE: { status: "running", challenger: "I", personal: 12, note: "Main challenger is independent Dan Osborn, who ran 13 pts ahead of the Democratic presidential ticket in 2024." },
@@ -306,13 +339,16 @@
       if (s === "term-limited") moves.push("Term-limited; leaves office in January 2027.");
       if (s === "retiring") moves.push("Not seeking re-election; leaves office in January 2027.");
       if (s === "not-up") moves.push(`Next gubernatorial election: ${nextGovYear(st)}.`);
-      if ((s === "term-limited" || s === "retiring") && a < 70) moves.push(fits ? "Strong position for a future U.S. Senate run, cabinet post, or national role." : "Could seek a federal appointment or private-sector role; a statewide federal race would be uphill given the state's lean.");
+      if (s === "lost-primary") moves.push(p.event.text);
+      if (p.event && s !== "lost-primary") moves.push(p.event.text);
+      if (p.note) moves.push(p.note);
+      if ((s === "term-limited" || s === "retiring" || s === "lost-primary") && a < 70) moves.push(fits ? "Strong position for a future U.S. Senate run, cabinet post, or national role." : "Could seek a federal appointment or private-sector role; a statewide federal race would be uphill given the state's lean.");
       if (a < 64 && (p.approval >= 55 || (lean && M.states[st].seats >= 13))) moves.push("Frequently mentioned as a potential 2028 presidential or vice-presidential contender.");
       if (s === "running" && a >= 75) moves.push("Likely final term if re-elected.");
     } else if (kind === "senator") {
       const up = p.cls === 2 || p.end?.startsWith("2026");
       const info = M.SENATE_2026_STATUS[st];
-      if (up && info?.status === "open") moves.push(info.note + " Seat is open in 2026.");
+      if (up && info?.status === "open") moves.push(info.note + (st === "TX" ? " Leaves the Senate in January 2027." : " Seat is open in 2026."));
       else if (up) moves.push(`Up for election November 3, 2026${prob != null ? ` — model gives ${prob}% chance to hold the seat` : ""}.`);
       else moves.push(`Term runs through January ${p.end?.slice(0, 4)}.`);
       if (a >= 78 && !(up && info?.status === "open")) moves.push("Age makes retirement at the end of the current term a real possibility.");
@@ -363,12 +399,14 @@
   //   climate      (generic ballot − 2024 House popular vote) × elasticity
   //   incumbency   +2.5 Senate / +3 Governor for a running incumbent; House baselines already
   //                include it, so open House seats subtract 3 from the departing party
-  //   approval     running governors: the partisan margin is pulled toward an approval-implied
-  //                margin of 3 × (approval − 48) — 40% of the way when approval helps the incumbent
-  //                (popular governors win in opposite-party states), 25% when it hurts (unpopular
-  //                incumbents in one-party states usually still win the general election);
+  //   approval     running governors: 0.5 × (approval − partisan expectation), capped at ±12,
+  //                where partisan expectation = 50 + half the party's lead in the state (sourced
+  //                approval averages from data/polling.js);
   //                departing governors: (approval − 50) × 0.1 for their party
   //   personal     documented personal vote of specific candidates (e.g. Collins, Osborn)
+  //   polling      when head-to-head polls exist, final margin = w × poll average + (1 − w) ×
+  //                fundamentals, w = 0.35 + 0.1 per poll (an aggregator average counts as 3),
+  //                capped at 0.7; σ shrinks by up to 25% as polling weight grows
   //   quality      (qualification score − 50) × 0.04 toward a running incumbent (max ±2)
   // Win probability = Φ(margin / σ) with σ = 6 (Senate), 6.5 (House, +3 where maps were redrawn
   // for 2026), 7 (Governor). Chamber control comes from 20,000 simulations that share a national
@@ -409,13 +447,26 @@
       r.climate = round1(swing * el);
       r.personal ??= 0;
       let margin = r.baseline + r.climate + r.incumbency + r.qualityEffect + r.personal;
-      if (r.approvalWeight) { // blend partisanship with the incumbent's approval-implied margin
+      if (r.approvalWeight) {
+        // Approval relative to what partisanship alone predicts (50% + half the party's lead):
+        // each point above/below that moves the margin half a point, capped at ±12.
         const dir = r.incumbent.party === "D" ? 1 : -1;
-        const approvalMargin = dir * 3 * (r.approval - 48);
-        const helps = (approvalMargin - margin) * dir > 0;
-        r.approvalEffect = round1((helps ? 0.4 : 0.25) * (approvalMargin - margin));
+        const expected = 50 + (dir * r.baseline) / 2;
+        r.approvalEffect = round1(dir * clamp(0.5 * (r.approval - expected), -12, 12));
       }
-      r.margin = round1(margin + r.approvalEffect);
+      r.fundamentals = round1(margin + r.approvalEffect);
+      r.margin = r.fundamentals;
+      // Blend with the race's head-to-head polling when published (data/polling.js).
+      const pr = P?.races[r.id];
+      const pm = pr ? pr.polls.map(M.pollMargin).filter((v) => v != null) : [];
+      if (pm.length) {
+        const n = pr.polls.reduce((k, x) => k + (/average/i.test(x.pollster) ? 3 : M.pollMargin(x) != null ? 1 : 0), 0);
+        const w = Math.min(0.7, 0.35 + 0.1 * n);
+        r.poll = { ...pr, margin: round1(mean(pm)), weight: w, count: n };
+        r.margin = round1(w * r.poll.margin + (1 - w) * r.fundamentals);
+        r.sigma = round1(r.sigma * (1 - 0.25 * w));
+        if (pr.challenger) r.challenger = pr.challenger;
+      }
       r.pD = M.normCdf(r.margin / r.sigma);
       r.rating = M.rating(r.pD);
       r.elasticity = el;
@@ -448,10 +499,11 @@
       const dir = g.party === "D" ? 1 : -1;
       const running = g.status2026 === "running";
       const q = M.qualification({ ...g, state: st });
+      const why = { "term-limited": "is term-limited.", retiring: "is not seeking re-election.", "lost-primary": "lost the 2026 primary." }[g.status2026];
       addRace({
         office: "governor", id: `GOV-${st}`, state: st, title: `Governor — ${M.states[st].name}`,
         incumbent: { name: g.name, party: g.party }, status: running ? "running" : "open",
-        note: running ? null : g.status2026 === "term-limited" ? `${g.name} is term-limited.` : `${g.name} is not seeking re-election.`,
+        note: running ? null : `${g.name} ${why}`,
         baseline,
         incumbency: running ? dir * INCUMBENCY.governor : 0,
         // An unpopular departing governor still drags on their party a little (and vice-versa).

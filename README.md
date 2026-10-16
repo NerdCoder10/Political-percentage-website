@@ -61,6 +61,19 @@ partisan baseline + national climate + incumbency + public approval + qualificat
 
 The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simulations that share a national polling error.
 
+## Public-opinion data and neutrality
+
+`data/polling.js` holds every approval rating, national polling average and 2026 head-to-head poll the site uses. Each entry has its pollster, field date and a link. They were collected from news coverage of published polls in mid-October 2026, and these rules keep them neutral:
+
+1. **Independent pollsters only** count toward averages: universities, news media and nonpartisan firms.
+2. **Sponsored polls are excluded.** Polls paid for by campaigns, parties or advocacy groups are listed with their sponsor but don't count, whichever side paid.
+3. **Simple averages.** No pollster grades or house-effect corrections.
+4. **Neutral imputation.** Governors with no qualifying poll get the median of all sourced governors and are flagged.
+5. **Several aggregators for national numbers.** President approval averages RealClearPolitics, Silver Bulletin, NYT and Poliwave; the generic ballot averages Silver Bulletin, RCP, FiftyPlusOne and USPollingData.
+6. **Capped poll weight.** Head-to-head polls get at most 70% weight in the forecast; the rest comes from vote-history fundamentals.
+
+The Methodology tab shows every governor's approval with its sources. Each race in the Midterm tab lists the polls behind it.
+
 ## Data sources
 
 - County presidential results 2016–2024: [tonmcg/US_County_Level_Election_Results_08-24](https://github.com/tonmcg/US_County_Level_Election_Results_08-24)

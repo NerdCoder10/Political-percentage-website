@@ -205,6 +205,25 @@
 
   const initials = (n) => n.replace(/\b(Jr|Sr|II|III)\.?/g, "").split(/\s+/).filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).slice(0, 2).join("");
 
+  // One line per poll: "Pollster (date): 52% approve / 41% disapprove", linked when a URL exists.
+  const pollLine = (x, mode) => {
+    const val = mode === "race"
+      ? (x.D != null ? `D ${x.D} – R ${x.R}` : x.margin != null ? `margin ${x.margin > 0 ? "D+" : x.margin < 0 ? "R+" : "±"}${Math.abs(x.margin)}` : esc(x.note ?? ""))
+      : `${x.approve}% ${x.scale === "favorability" ? "favorable" : x.scale === "rating" ? "excellent/good" : "approve"}${x.disapprove != null ? ` / ${x.disapprove}% ${x.scale === "favorability" ? "unfavorable" : x.scale === "rating" ? "fair/poor" : "disapprove"}` : ""}`;
+    const name = x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.pollster)}</a>` : esc(x.pollster);
+    return `<li>${name}${x.date ? ` (${esc(x.date)})` : ""}: ${val}${x.sponsor ? ` — <i>sponsor: ${esc(x.sponsor)}</i>` : ""}</li>`;
+  };
+  function approvalBlock(info) {
+    if (!info) return "";
+    return `<div class="approval">
+      <div class="qual"><span>Job approval</span><div class="meter"><i style="width:${info.value}%"></i></div><b class="num">${fmt(info.value)}%</b></div>
+      <details><summary>${info.imputed ? "No qualifying public poll — neutral median imputed" : `Average of ${info.polls.length} independent poll${info.polls.length > 1 ? "s" : ""}`}</summary>
+        ${info.polls.length ? `<ul class="sources">${info.polls.map((x) => pollLine(x)).join("")}</ul>` : ""}
+        ${info.excluded?.length ? `<p class="fine">Excluded (sponsored by a campaign, party or advocacy group):</p><ul class="sources">${info.excluded.map((x) => pollLine(x)).join("")}</ul>` : ""}
+        ${info.note ? `<p class="fine">${esc(info.note)}</p>` : ""}
+      </details></div>`;
+  }
+
   function leaderCard(p, office, kind, ctx = {}) {
     if (!p) return "";
     const b = M.bio(p, kind, ctx);
@@ -219,6 +238,8 @@
         </div>
       </div>
       <div class="qual"><span>Qualifications</span><div class="meter"><i style="width:${b.qual.score}%"></i></div><b class="num">${b.qual.score}/100</b></div>
+      ${kind === "governor" ? approvalBlock(p.approvalInfo) : ""}
+      ${ctx.approval ? approvalBlock(ctx.approval) : ""}
       <details ${ctx.open ? "open" : ""}><summary>Biography &amp; possible next moves</summary>
         <h4>Qualifications &amp; background</h4>
         <ul>${b.qualifications.length ? b.qualifications.map((q) => `<li>${esc(q)}</li>`).join("") : "<li>No prior offices recorded in dataset.</li>"}</ul>
@@ -259,7 +280,9 @@
       <section><h3>National leaders</h3>
         ${NATIONAL_LEADERS.map((p) => {
           const roster = p.roster && CONGRESS.find((m) => m.id === p.roster);
-          return leaderCard({ ...(roster ?? {}), ...p, state: "US" }, p.office, "national");
+          const pa = p.office.startsWith("President") && POLLING.national.presidentApproval;
+          return leaderCard({ ...(roster ?? {}), ...p, state: "US" }, p.office, "national",
+            pa ? { approval: { value: pa.value, polls: pa.polls } } : {});
         }).join("")}
       </section>
       <p class="note">Officeholder data: Congress from the public @unitedstates/congress-legislators roster; governors, mayors and county leaders curated as of ${NATIONAL_OPINION.asOf}. Verify against official sources before relying on it.</p>`;
@@ -489,7 +512,7 @@
       const cls = r.rating.tier === 0 ? "T" : r.rating.side + r.rating.tier;
       const seatText = r.status === "open" ? "Open seat" : r.status === "uncertain" ? "Incumbent (uncertain)" : "Incumbent running";
       const row = `<tr class="race" data-race="${r.id}" aria-expanded="${openRace === r.id}">
-        <td><div class="race-title">${esc(r.title)}<small>${r.office === "house" ? r.id : r.office[0].toUpperCase() + r.office.slice(1)}${r.redistricted ? " · new 2026 map" : ""}</small></div></td>
+        <td><div class="race-title">${esc(r.title)}<small>${r.office === "house" ? r.id : r.office[0].toUpperCase() + r.office.slice(1)}${r.redistricted ? " · new 2026 map" : ""}${r.poll ? ` · ${esc(r.poll.D)} vs. ${esc(r.poll.R)} · polled` : ""}</small></div></td>
         <td>${esc(r.incumbent.name)} <span class="chip ${r.incumbent.party}">${r.incumbent.party}</span></td>
         <td>${seatText}</td>
         <td><span class="pill ${cls}">${r.rating.label.replace(" D", r.challenger === "I" ? " Ind" : " D")}</span></td>
@@ -510,10 +533,16 @@
         <div>Approval (public opinion)<b>${f(r.approvalEffect)}</b></div>
         <div>Qualifications<b>${f(r.qualityEffect)}</b></div>
         ${r.personal ? `<div>Candidate personal vote<b>${f(r.personal)}</b></div>` : ""}
-        <div>Expected margin<b>${f(r.margin)}</b></div>
+        <div>Fundamentals margin<b>${f(r.fundamentals)}</b></div>
+        ${r.poll ? `<div>Poll average (${r.poll.polls.length} source${r.poll.polls.length > 1 ? "s" : ""})<b>${f(r.poll.margin)}</b></div><div>Poll weight<b>${Math.round(r.poll.weight * 100)}%</b></div>` : ""}
+        <div>Final margin<b>${f(r.margin)}</b></div>
         <div>Uncertainty (σ)<b>±${r.sigma} pts</b></div>
       </div>
-      <p class="fine">Win probability = Φ(expected margin ÷ σ) = Φ(${fmt(r.margin)} ÷ ${r.sigma}) = ${fmt(r.pD * 100)}% ${r.challenger === "I" ? "independent" : "Democratic"}.
+      ${r.poll ? `<p class="fine"><b>${esc(r.poll.D)}</b> (${r.challenger === "I" ? "I" : "D"}) vs. <b>${esc(r.poll.R)}</b> (R). Polls used — ${esc(r.poll.basis)}:</p>
+        <ul class="sources">${r.poll.polls.map((x) => pollLine(x, "race")).join("")}</ul>
+        ${r.poll.excluded?.length ? `<p class="fine">Excluded as sponsored:</p><ul class="sources">${r.poll.excluded.map((x) => pollLine(x, "race")).join("")}</ul>` : ""}
+        ${r.poll.note ? `<p class="fine">${esc(r.poll.note)}</p>` : ""}` : `<p class="fine">No published head-to-head polling found for this race; the forecast uses fundamentals only.</p>`}
+      <p class="fine">Win probability = Φ(final margin ÷ σ) = Φ(${fmt(r.margin)} ÷ ${r.sigma}) = ${fmt(r.pD * 100)}% ${r.challenger === "I" ? "independent" : "Democratic"}.
       ${r.office !== "mayor" ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px" data-open-state="${r.state}">View ${esc(M.states[r.state].name)} on the map</button>` : ""}</p>
     </td></tr>`;
   }
@@ -579,10 +608,32 @@ Other       = 0.4 · non-major vote + 0.4%
                   + (generic ballot − 2024 House margin) × elasticity
                   + incumbency (Senate ±2.5, Governor ±3; open House seats −3 for the departing party)
                   + qualification edge  ((score − 50) × 0.04, max ±2)
-                  + approval pull for running governors  (toward 3 × (approval − 48): 40% if it helps, 25% if it hurts)
+                  + approval effect for running governors  (0.5 × (approval − (50 + ½ party lead)), max ±12)
                   + documented personal vote (e.g. Collins −12, Osborn +12)
-P(win) = Φ(expected margin ÷ σ)      σ = 6 Senate · 6.5 House (+3 if redistricted) · 7 Governor · 8 Mayor</pre>
+final margin      = w × head-to-head poll average + (1 − w) × expected margin
+                    w = 0.35 + 0.1 per independent poll (an aggregator average counts as 3), max 0.7
+P(win) = Φ(final margin ÷ σ)      σ = 6 Senate · 6.5 House (+3 if redistricted) · 7 Governor · 8 Mayor,
+                                   shrinking by up to 25% as polling weight grows</pre>
       <p>Chamber control comes from 20,000 simulated elections. Each simulation draws one shared national polling error (σ = 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties. Move the generic-ballot slider on the forecast tab to see how every race responds.</p>
+
+      <h2>5. Sources &amp; neutrality</h2>
+      <p>Approval ratings, national polling and race polls come from published polls collected from news coverage on ${esc(POLLING.asOf)}. Each number lists its pollster, field date and a link. These rules keep the inputs as neutral as possible:</p>
+      <ol>
+        <li><b>Independent pollsters first.</b> Universities, news organizations and nonpartisan firms that publish their methods count, such as Morning Consult, Emerson, Siena, Marist, Quinnipiac, UNH, Marquette and Vanderbilt.</li>
+        <li><b>Sponsored polls are excluded from averages.</b> Polls paid for by a campaign, party or advocacy group are shown with their sponsor but don't count, whichever side paid for them.</li>
+        <li><b>Simple averages.</b> No pollster grades or "house effect" corrections, so anyone can reproduce the number.</li>
+        <li><b>Neutral imputation.</b> A governor with no qualifying poll gets the median of all sourced governors (${fmt(M.approvalMedian)}%), not a guess in either direction.</li>
+        <li><b>Several aggregators for national numbers.</b> President approval (${fmt(POLLING.national.presidentApproval.value)}%) and the generic ballot (D+${fmt(POLLING.national.genericBallot.value)}) average aggregators with differently leaning audiences: ${POLLING.national.genericBallot.polls.map((x) => esc(x.pollster)).join(", ")}.</li>
+        <li><b>Polls inform the forecast but don't replace it.</b> Head-to-head polls get at most 70% weight, and the rest comes from the vote-history fundamentals, so a single outlier can't swing a race.</li>
+      </ol>
+      <div class="table-wrap"><table class="method-table">
+        <thead><tr><th>State</th><th>Governor</th><th class="num">Approval used</th><th>Basis</th></tr></thead>
+        <tbody>${Object.entries(GOVERNORS).sort((a, b) => a[0].localeCompare(b[0])).map(([st, g]) => {
+          const i = g.approvalInfo;
+          return `<tr><td>${st}</td><td>${esc(g.name)}</td><td class="num">${fmt(i.value)}%${i.imputed ? "*" : ""}</td><td><ul class="sources" style="margin:0">${i.polls.length ? i.polls.map((x) => pollLine(x)).join("") : `<li>${esc(i.note ?? "No qualifying poll")} (median imputed)</li>`}${(i.excluded ?? []).map((x) => pollLine(x)).join("")}</ul></td></tr>`;
+        }).join("")}</tbody></table></div>
+      <p class="fine">* imputed median. Ratings labelled "favorable" or "excellent/good" use different question wording from job approval and run a little lower; they're used only where no job-approval poll exists.</p>
+      <p class="callout"><b>Economic, health, education, safety and other rubric indicators:</b> unemployment is updated from the BLS August 2026 release for the states it reported (${Object.keys(POLLING.indicatorUpdates.unemp.values).join(", ")}). The other indicators are still rounded figures from the latest official releases and are marked approximate. This build environment blocks the official data services (Census, BLS, BEA, CDC, FBI, EIA, NAEP), so they couldn't be pulled automatically.</p>
 
       <h2>Data sources &amp; limitations</h2>
       <ul>

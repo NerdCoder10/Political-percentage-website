@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 for (const f of ["data/states-meta.js", "data/generated/elections.js", "data/generated/house2024.js", "data/generated/congress.js",
-  "data/generated/cities.js", "data/leaders.js", "data/state-indicators.js", "js/model.js"]) await import(path.join(ROOT, f));
+  "data/generated/cities.js", "data/leaders.js", "data/state-indicators.js", "data/polling.js", "js/model.js"]) await import(path.join(ROOT, f));
 const M = globalThis.Model;
 let failures = 0;
 const check = (ok, msg) => { if (!ok) { failures++; console.error("FAIL", msg); } };
