@@ -43,6 +43,23 @@
     }
   }
 
+  // Official statistics (data/generated/indicators.js, built by scripts/fetch-indicators.mjs)
+  // replace the curated approximations wherever an agency published a value.
+  M.indicatorSources = {};
+  const OI = G.OFFICIAL_INDICATORS?.indicators ?? {};
+  for (const [key, ind] of Object.entries(OI)) {
+    const i = G.INDICATOR_COLUMNS.indexOf(key);
+    if (i < 0) continue;
+    for (const [st, v] of Object.entries(ind.values)) if (G.STATE_INDICATORS[st]) G.STATE_INDICATORS[st][i] = v;
+    M.indicatorSources[key] = { official: true, source: ind.source, url: ind.url, vintage: ind.vintage, notes: ind.notes };
+  }
+  for (const key of G.INDICATOR_COLUMNS) M.indicatorSources[key] ??= { official: false, source: "Curated approximation (no free official data feed); see data/state-indicators.js" };
+  M.indicatorSources.credit = { official: false, source: "S&P Global general-obligation ratings, curated (no free data feed)" };
+  M.indicatorSources.pension = { official: false, source: "Pew Charitable Trusts / Equable pension funded ratios, curated (no free data feed)" };
+  M.indicatorSources.realIncome = { official: !!OI.income && !!OI.rpp, source: "Median household income (Census ACS) ÷ regional price parity (BEA) × 100" };
+  M.indicatorSources.approval = { official: true, source: "Average of independent polls (data/polling.js)" };
+  M.indicatorSources.crossover = { official: true, source: "Approval minus partisan expectation (computed)" };
+
   M.states = Object.fromEntries(G.STATES_META.map(([fips, abbr, name, seats]) => [abbr, { fips, abbr, name, seats }]));
   M.stateByFips = Object.fromEntries(G.STATES_META.map(([fips, abbr]) => [fips, abbr]));
   M.partyName = { R: "Republican", D: "Democratic", I: "Independent", O: "Other" };

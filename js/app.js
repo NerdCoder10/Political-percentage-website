@@ -197,7 +197,7 @@
       ${r.categories.map((c) => `
         <details class="cat"><summary><div class="cat-row"><span>${esc(c.name)}</span><span class="num">${c.score} / ${c.points}</span>
           <div class="meter"><i style="width:${(100 * c.score) / c.points}%"></i></div></div></summary>
-          <div class="cat-items">${c.items.map((i) => `<div><span>${esc(i.label)}: <b>${fmt(i.value, i.value % 1 ? 1 : 0)}${esc(i.unit)}</b></span><span class="num">${fmt(i.score)} / ${i.points}</span></div>`).join("")}</div>
+          <div class="cat-items">${c.items.map((i) => { const src = M.indicatorSources[i.key]; return `<div title="${esc(src?.source ?? "")}"><span>${esc(i.label)}: <b>${fmt(i.value, i.value % 1 ? 1 : 0)}${esc(i.unit)}</b>${src && !src.official ? ' <span class="tag">approx.</span>' : ""}${src?.notes?.[code] ? ` <span class="tag">${esc(src.notes[code])}</span>` : ""}</span><span class="num">${fmt(i.score)} / ${i.points}</span></div>`; }).join("")}</div>
         </details>`).join("")}
       <p class="fine">Tap a category for its indicators. <button class="btn-ghost" style="padding:2px 8px;font-size:12px" data-nav="tab:method">How scoring works</button></p>
     </section>`;
@@ -567,12 +567,12 @@
       <p>Nine areas of government are scored with <b>fixed goalposts</b>. A government earns
       <code>points × (value − worst) ÷ (best − worst)</code>, capped between 0 and the maximum. Goalposts are absolute, not relative to other states, so one state's score never changes because another state improved. Weights reflect how directly each area affects residents and how much government controls it.</p>
       <div class="table-wrap"><table class="method-table">
-        <thead><tr><th>Category / indicator</th><th class="num">Points</th><th class="num">Worst (0 pts)</th><th class="num">Best (full)</th><th>Why this weight</th></tr></thead>
+        <thead><tr><th>Category / indicator</th><th class="num">Points</th><th class="num">Worst (0 pts)</th><th class="num">Best (full)</th><th>Why this weight / data source</th></tr></thead>
         <tbody>${M.RUBRIC.map((c) => `<tr class="cat-head"><td>${esc(c.name)}</td><td class="num">${c.points}</td><td></td><td></td><td>${esc(c.why)}</td></tr>`
-          + c.items.map((i) => `<tr><td>&nbsp;&nbsp;${esc(i.label)}</td><td class="num">${i.points}</td><td class="num">${i.worst}${esc(i.unit)}</td><td class="num">${i.best}${esc(i.unit)}</td><td></td></tr>`).join("")).join("")}
+          + c.items.map((i) => { const src = M.indicatorSources[i.key]; return `<tr><td>&nbsp;&nbsp;${esc(i.label)}</td><td class="num">${i.points}</td><td class="num">${i.worst}${esc(i.unit)}</td><td class="num">${i.best}${esc(i.unit)}</td><td class="fine">${src?.url ? `<a href="${esc(src.url)}" target="_blank" rel="noopener">${esc(src.source)}</a>` : esc(src?.source ?? "")}${src?.official ? "" : ' <span class="tag">approx.</span>'}</td></tr>`; }).join("")).join("")}
           <tr class="cat-head"><td>Total</td><td class="num">${M.RUBRIC_TOTAL}</td><td></td><td></td><td>Grades: A ≥ 750 · B ≥ 650 · C ≥ 550 · D ≥ 450 · F below</td></tr>
         </tbody></table></div>
-      <p class="fine">Cross-partisan appeal = executive approval − (50 + half the executive's party lead in that state). It rewards leaders who win approval beyond their own party's base, so public opinion isn't just a partisanship proxy. Indicator values are rounded approximations of the latest BLS, BEA, Census ACS, CDC, FBI, NCES, FHWA, EIA, S&amp;P and Pew releases; see <code>data/state-indicators.js</code>.</p>
+      <p class="fine">Cross-partisan appeal = executive approval − (50 + half the executive's party lead in that state). It rewards leaders who win approval beyond their own party's base, so public opinion isn't just a partisanship proxy. Indicator sources are listed in the table above.</p>
 
       <h3 style="margin-top:18px">State rankings</h3>
       <div class="table-wrap"><table class="method-table">
@@ -633,7 +633,7 @@ P(win) = Φ(final margin ÷ σ)      σ = 6 Senate · 6.5 House (+3 if redistric
           return `<tr><td>${st}</td><td>${esc(g.name)}</td><td class="num">${fmt(i.value)}%${i.imputed ? "*" : ""}</td><td><ul class="sources" style="margin:0">${i.polls.length ? i.polls.map((x) => pollLine(x)).join("") : `<li>${esc(i.note ?? "No qualifying poll")} (median imputed)</li>`}${(i.excluded ?? []).map((x) => pollLine(x)).join("")}</ul></td></tr>`;
         }).join("")}</tbody></table></div>
       <p class="fine">* imputed median. Ratings labelled "favorable" or "excellent/good" use different question wording from job approval and run a little lower; they're used only where no job-approval poll exists.</p>
-      <p class="callout"><b>Economic, health, education, safety and other rubric indicators:</b> unemployment is updated from the BLS August 2026 release for the states it reported (${Object.keys(POLLING.indicatorUpdates.unemp.values).join(", ")}). The other indicators are still rounded figures from the latest official releases and are marked approximate. This build environment blocks the official data services (Census, BLS, BEA, CDC, FBI, EIA, NAEP), so they couldn't be pulled automatically.</p>
+      <p class="callout"><b>Rubric indicators:</b> 17 of the 19 indicators are downloaded directly from the official agencies by <code>scripts/fetch-indicators.mjs</code> (last run ${esc(OFFICIAL_INDICATORS?.fetched ?? "n/a")}): Census ACS, BLS, BEA, NCES/NAEP, CDC/NCHS, FBI Crime Data Explorer, FHWA, EIA and the U.S. Elections Project. Credit ratings and pension funding have no free official feed and remain curated approximations, marked <span class="tag">approx.</span>. The source and data year for each indicator are listed in the rubric table above.</p>
 
       <h2>Data sources &amp; limitations</h2>
       <ul>

@@ -240,12 +240,7 @@ globalThis.POLLING = {
     ID: { governor: "nominated", text: "Won the May 19, 2026 GOP primary with 59%; faces Democrat Terri Pickens." },
   },
 
-  // Rubric indicators updated from official releases found in news coverage.
-  indicatorUpdates: {
-    unemp: {
-      source: "BLS Local Area Unemployment Statistics, August 2026 (preliminary)",
-      url: "https://www.bls.gov/opub/ted/2026/the-district-of-columbia-had-the-highest-unemployment-rate-5-7-percent-in-august-2026.htm",
-      values: { DC: 5.7, CA: 5.1, CT: 5.1, OR: 5.1, SD: 2.0, ND: 2.2, VT: 2.6, AL: 3.4, NJ: 4.3 },
-    },
-  },
+  // Rubric indicators now come directly from the agencies (data/generated/indicators.js);
+  // this hook remains for one-off corrections sourced from news coverage.
+  indicatorUpdates: {},
 };

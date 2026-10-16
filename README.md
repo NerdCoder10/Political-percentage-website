@@ -80,9 +80,30 @@ The Methodology tab shows every governor's approval with its sources. Each race 
 - 2024 U.S. House results: [fivethirtyeight/election-results](https://github.com/fivethirtyeight/election-results)
 - Current members of Congress: [unitedstates/congress-legislators](https://github.com/unitedstates/congress-legislators)
 - Map: [us-atlas](https://github.com/topojson/us-atlas) (U.S. Census boundaries); 1,000 largest cities: plotly/datasets
-- Rubric indicators: rounded figures from BLS, BEA, Census ACS, CDC, FBI, NCES, FHWA, EIA, S&P and Pew
+- Rubric indicators: downloaded from the official agencies by `scripts/fetch-indicators.mjs`. Only no-key bulk files are used, so anyone can rerun it.
 
-Run `npm install && npm run build:data -- --refresh` to pull fresh copies of the downloaded data.
+| Indicator | Source (latest data year) |
+| --- | --- |
+| Median income, poverty, uninsured, bachelor's degrees, home value ÷ income | Census Bureau, American Community Survey 1-year (2024) |
+| Unemployment | Bureau of Labor Statistics, Local Area Unemployment Statistics (latest month) |
+| Real GDP growth, regional price parities | Bureau of Economic Analysis (GDP 2025, prices 2024) |
+| 8th-grade math | NAEP (2024) |
+| Graduation rate | NCES Digest table 219.46 (2021–22) |
+| Life expectancy | CDC/NCHS state life tables (2021) |
+| Overdose deaths | CDC provisional counts (latest 12 months) |
+| Violent and property crime | FBI Crime Data Explorer (2025) |
+| Bridges in poor condition | FHWA National Bridge Inventory (2026) |
+| Turnout | University of Florida Election Lab (2024) |
+| Renewable electricity | Energy Information Administration (2024) |
+
+Credit ratings (S&P) and pension funding (Pew/Equable) have no free official feed, so they stay curated in `data/state-indicators.js`. The site marks them "approx."
+
+```bash
+npm install
+npm run build:data -- --refresh                 # elections, Congress roster, cities, map
+DATA_CONTACT_EMAIL=you@example.com npm run fetch:indicators -- --refresh   # official statistics (BLS asks for a contact address)
+npm run check
+```
 
 ## Limitations
 
