@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "build:data": "node scripts/build-data.mjs",
-    "check": "node scripts/check.mjs",
     "fetch:indicators": "node scripts/fetch-indicators.mjs",
+    "stamp": "node scripts/stamp-version.mjs",
+    "refresh": "node scripts/build-data.mjs --refresh && node scripts/fetch-indicators.mjs --refresh && node scripts/stamp-version.mjs",
+    "check": "node scripts/check.mjs",
     "serve": "python3 -m http.server 8080"
   },
   "devDependencies": {

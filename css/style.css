@@ -248,3 +248,8 @@ pre.formula { background: var(--surface); border: 1px solid var(--line); border-
   .prob-col { min-width: 160px; }
   td, th { padding: 8px; }
 }
+
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
+  background: var(--text); color: var(--surface); padding: 10px 16px; border-radius: 10px; box-shadow: var(--shadow); font-weight: 600;
+}

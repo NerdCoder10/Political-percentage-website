@@ -285,7 +285,8 @@
             pa ? { approval: { value: pa.value, polls: pa.polls } } : {});
         }).join("")}
       </section>
-      <p class="note">Officeholder data: Congress from the public @unitedstates/congress-legislators roster; governors, mayors and county leaders curated as of ${NATIONAL_OPINION.asOf}. Verify against official sources before relying on it.</p>`;
+      <p class="note">Officeholder data: Congress from the public @unitedstates/congress-legislators roster; governors, mayors and county leaders curated as of ${NATIONAL_OPINION.asOf}. Verify against official sources before relying on it.</p>
+      ${globalThis.DATA_VERSION ? `<p class="fine">Data last changed ${esc(new Date(DATA_VERSION.updated).toLocaleString())}. The data refreshes every 30 minutes, and this page picks up changes automatically.</p>` : ""}`;
   }
 
   function statePanel(st) {

@@ -105,6 +105,17 @@ DATA_CONTACT_EMAIL=you@example.com npm run fetch:indicators -- --refresh   # off
 npm run check
 ```
 
+## Automatic refresh (every 30 minutes)
+
+- **Server side:** `.github/workflows/refresh-data.yml` runs `npm run refresh` every 30 minutes and can also be started by hand from the Actions tab. It re-downloads the election results, the Congress roster and all official statistics. Unchanged files are skipped via If-Modified-Since. Then it runs the sanity checks, and it commits `data/generated/` only when a value actually changed.
+- **Browser side:** `js/refresh.js` checks `data/generated/version.js`, a hash of all data files, every 30 minutes, and again when a hidden tab becomes visible. If the hash changed, the page reloads itself and stays on the same view.
+- **Setup:**
+  - GitHub only runs scheduled workflows from the repository's **default branch**, so the schedule starts once this branch is merged into `main`.
+  - Add a repository secret `DATA_CONTACT_EMAIL` (Settings → Secrets and variables → Actions). The labor statistics bureau requires a contact address.
+  - For visitors to see refreshed data, host the site from `main`, for example with GitHub Pages.
+- **What doesn't auto-refresh:** approval ratings and race polls (`data/polling.js`) and curated officeholders (`data/leaders.js`). Those come from news coverage and are reviewed by hand under the neutrality rules above.
+- **Source update frequency:** most agencies publish monthly or annually, so most 30-minute runs find nothing new and make no commit.
+
 ## Limitations
 
 Governors, mayors (about 85 of the largest cities), county executives, approval ratings and retirement statuses are curated by hand in `data/leaders.js` as of October 2026. Verify them against official sources. Counties and cities without a curated leader show their form of government instead. Mid-decade redistricting in TX, CA, MO, NC, OH and UT isn't fully reflected in district baselines, so those races get extra uncertainty. This is an educational model, not an official forecast.
