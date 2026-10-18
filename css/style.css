@@ -275,3 +275,8 @@ pre.formula { background: var(--surface); border: 1px solid var(--line); border-
 }
 .tab-short { display: none; }
 @media (max-width: 560px) { .tab-long { display: none; } .tab-short { display: inline; } .tabs button { padding: 8px 10px; } }
+.detail-h { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 10px 0 6px; }
+table.signals { font-size: 13px; }
+table.signals td, table.signals th { padding: 6px 10px; }
+table.signals tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
+table.signals .num { text-align: right; font-variant-numeric: tabular-nums; }

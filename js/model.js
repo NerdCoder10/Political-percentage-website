@@ -43,6 +43,23 @@
     }
   }
 
+  // National climate: one number built from three independent measures (points, D minus R).
+  //   generic ballot (50%)  — multi-aggregator average of the congressional ballot question
+  //   presidential approval (25%) — in past midterms the president's party ran about 0.7 pts
+  //                           behind per point of approval below 50 (2006, 2010, 2018, 2022)
+  //   special elections (25%) — 2025–26 swing vs. the 2024 presidential margin, discounted to 60%
+  //                           because special-election electorates exaggerate swings (2017–18 ratio)
+  M.climateParts = (genericBallot) => {
+    const gb = genericBallot ?? P?.national.genericBallot.value ?? G.NATIONAL_OPINION.genericBallot;
+    const approval = P?.national.presidentApproval.value ?? G.NATIONAL_OPINION.presidentApproval;
+    const parts = [{ key: "generic", label: "Generic congressional ballot", value: gb, weight: 0.5 },
+      { key: "approval", label: `Presidential approval (${approval}%) → 0.7 × (50 − approval)`, value: Math.round(0.7 * (50 - approval) * 10) / 10, weight: 0.25 }];
+    if (P?.specialElections) parts.push({ key: "specials", label: `Special-election swing (D+${P.specialElections.value} vs. 2024) × 0.6 − 1.5`, value: Math.round((0.6 * P.specialElections.value - 1.5) * 10) / 10, weight: 0.25 });
+    const wsum = parts.reduce((a, x) => a + x.weight, 0);
+    return { parts, value: Math.round((parts.reduce((a, x) => a + x.value * x.weight, 0) / wsum) * 10) / 10 };
+  };
+  if (P) G.NATIONAL_OPINION.climate = M.climateParts().value;
+
   // Official statistics (data/generated/indicators.js, built by scripts/fetch-indicators.mjs)
   // replace the curated approximations wherever an agency published a value.
   M.indicatorSources = {};
@@ -98,7 +115,7 @@
     for (const h of Object.values(G.HOUSE24)) { r += h.R; d += h.D; t += h.total; }
     return ((d - r) / t) * 100;
   })();
-  M.environmentShift = (genericBallot = G.NATIONAL_OPINION.genericBallot) => (genericBallot - M.houseNationalMargin24) / 100;
+  M.environmentShift = (climate = G.NATIONAL_OPINION.climate ?? G.NATIONAL_OPINION.genericBallot) => (climate - M.houseNationalMargin24) / 100;
 
   M.stateShares = (st) => {
     const s = E().states[st];
@@ -425,6 +442,10 @@
   //                fundamentals, w = 0.35 + 0.1 per poll (an aggregator average counts as 3),
   //                capped at 0.7; σ shrinks by up to 25% as polling weight grows
   //   quality      (qualification score − 50) × 0.04 toward a running incumbent (max ±2)
+  //   money        2 × ln(D ÷ R campaign receipts, FEC), max ±4
+  //   economy      state unemployment and GDP growth vs. the nation (see M.economyEffect)
+  // These "fundamentals" are then combined with every other available signal — head-to-head
+  // polls, expert ratings, prediction markets — by inverse-variance weighting (see addRace).
   // Win probability = Φ(margin / σ) with σ = 6 (Senate), 6.5 (House, +3 where maps were redrawn
   // for 2026), 7 (Governor). Chamber control comes from 20,000 simulations that share a national
   // polling error (σ = 2.5) across all races.
@@ -455,9 +476,45 @@
 
   const elasticityOf = (marginPts) => 1 - 0.5 * Math.min(1, Math.abs(marginPts) / 100);
 
+  // Inverse of the standard normal CDF (Acklam's rational approximation, |error| < 1.2e-9).
+  M.normInv = (p) => {
+    const a = [-39.6968302866538, 220.946098424521, -275.928510446969, 138.357751867269, -30.6647980661472, 2.50662827745924];
+    const b = [-54.4760987982241, 161.585836858041, -155.698979859887, 66.8013118877197, -13.2806815528857];
+    const c = [-0.00778489400243029, -0.322396458041136, -2.40075827716184, -2.54973253934373, 4.37466414146497, 2.93816398269878];
+    const d = [0.00778469570904146, 0.32246712907004, 2.445134137143, 3.75440866190742];
+    const q = Math.min(Math.max(p, 1e-9), 1 - 1e-9);
+    if (q < 0.02425) { const t = Math.sqrt(-2 * Math.log(q)); return (((((c[0] * t + c[1]) * t + c[2]) * t + c[3]) * t + c[4]) * t + c[5]) / ((((d[0] * t + d[1]) * t + d[2]) * t + d[3]) * t + 1); }
+    if (q > 1 - 0.02425) return -M.normInv(1 - q);
+    const t = q - 0.5, r = t * t;
+    return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * t / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+  };
+
+  const SIG = () => G.RACE_SIGNALS ?? { ratings: {}, markets: {}, money: {}, notRunning: { senate: {}, house: {} } };
+  const indicator = (st, key) => G.STATE_INDICATORS[st]?.[G.INDICATOR_COLUMNS.indexOf(key)];
+
+  // Campaign money: 2 × ln(Democratic receipts ÷ Republican receipts), capped at ±4 points.
+  // Fundraising mostly follows competitiveness, so the effect is deliberately small.
+  M.moneyEffect = (raceKey, dSide = "D") => {
+    const m = SIG().money[raceKey];
+    const d = m?.[dSide] ?? (dSide === "I" ? m?.D : null), r = m?.R;
+    if (!d || !r || d.receipts < 25000 || r.receipts < 25000) return { effect: 0, d, r };
+    return { effect: round1(clamp(2 * Math.log(d.receipts / r.receipts), -4, 4)), d, r };
+  };
+  // State economy vs. the nation (official BLS/BEA data already on the site).
+  //   governor races: voters hold the governor's party responsible — each point of unemployment
+  //   above the national rate costs it 0.6, each point of GDP growth above the nation adds 0.3 (max ±2)
+  //   federal races: a weaker state economy helps the party out of the White House, 0.3 per point (max ±1.5)
+  M.economyEffect = (st, office, governorParty) => {
+    const du = (indicator(st, "unemp") ?? 0) - (indicator("US", "unemp") ?? 0);
+    const dg = (indicator(st, "gdp") ?? 0) - (indicator("US", "gdp") ?? 0);
+    if (office === "governor") return round1((governorParty === "D" ? 1 : -1) * clamp(-0.6 * du + 0.3 * dg, -2, 2));
+    return round1(clamp(0.3 * du, -1.5, 1.5)); // president is a Republican, so this moves toward Democrats
+  };
+
   M.forecast = (opts = {}) => {
     const gb = opts.genericBallot ?? G.NATIONAL_OPINION.genericBallot;
-    const swing = gb - M.houseNationalMargin24;
+    const climate = M.climateParts(gb);
+    const swing = climate.value - M.houseNationalMargin24;
     const races = [];
     const addRace = (r) => {
       const el = elasticityOf(r.baseline);
@@ -471,19 +528,49 @@
         const expected = 50 + (dir * r.baseline) / 2;
         r.approvalEffect = round1(dir * clamp(0.5 * (r.approval - expected), -12, 12));
       }
-      r.fundamentals = round1(margin + r.approvalEffect);
-      r.margin = r.fundamentals;
-      // Blend with the race's head-to-head polling when published (data/polling.js).
+      r.moneyEffect ??= 0;
+      r.economyEffect ??= 0;
+      r.fundamentals = round1(margin + r.approvalEffect + r.moneyEffect + r.economyEffect);
+
+      // ---- Combine every independent signal by inverse-variance weighting ----
+      // Each signal is an estimated Democratic margin with an uncertainty (σ). Polls, expert ratings
+      // and markets partly react to one another, so their weights are discounted by 40%.
+      // Governor races split from federal partisanship far more often (Scott, Ayotte, Beshear),
+      // so their fundamentals carry more uncertainty.
+      const fundSigma = r.office === "governor" ? 10 : r.sigma;
+      const signals = [{ key: "fundamentals", label: "Fundamentals (vote history, climate, incumbency, approval, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
       const pr = P?.races[r.id];
       const pm = pr ? pr.polls.map(M.pollMargin).filter((v) => v != null) : [];
       if (pm.length) {
         const n = pr.polls.reduce((k, x) => k + (/average/i.test(x.pollster) ? 3 : M.pollMargin(x) != null ? 1 : 0), 0);
-        const w = Math.min(0.7, 0.35 + 0.1 * n);
-        r.poll = { ...pr, margin: round1(mean(pm)), weight: w, count: n };
-        r.margin = round1(w * r.poll.margin + (1 - w) * r.fundamentals);
-        r.sigma = round1(r.sigma * (1 - 0.25 * w));
+        r.poll = { ...pr, margin: round1(mean(pm)), count: n };
+        signals.push({ key: "polls", label: `Head-to-head polls (${pr.polls.length} source${pr.polls.length > 1 ? "s" : ""})`, margin: r.poll.margin, sigma: round1(2.5 + 5 / Math.sqrt(n)), discount: 0.6 });
         if (pr.challenger) r.challenger = pr.challenger;
       }
+      const rt = SIG().ratings[r.id] ?? (r.office === "senate" ? SIG().ratings[r.id.replace(/-S$/, "")] : null);
+      if (rt) {
+        r.ratings = rt;
+        const allSafe = rt.ratings.every((x) => Math.abs(x.margin) === 15);
+        signals.push({ key: "ratings", label: `Expert ratings (${rt.ratings.length} forecasters)`, margin: rt.margin, sigma: allSafe ? 10 : 6, discount: 0.6 });
+      }
+      const mk = SIG().markets[r.id] ?? (r.office === "senate" ? SIG().markets[r.id.replace(/-S$/, "")] : null); // Kalshi lists specials under the state
+      if (mk) {
+        r.market = mk;
+        signals.push({ key: "markets", label: `Prediction market (Kalshi: ${Math.round(mk.pD * 100)}% ${r.challenger === "I" ? "Osborn" : "D"})`, margin: round1(M.normInv(clamp(mk.pD, 0.02, 0.98)) * 6), sigma: 5, discount: 0.6 });
+      }
+      // Robustness: when race-specific evidence (polls, ratings, markets) agrees and the fundamentals
+      // sit more than 8 points away from its average, widen the fundamentals' σ in proportion.
+      if (signals.length >= 3) {
+        const others = signals.slice(1);
+        const gap = Math.abs(r.fundamentals - mean(others.map((x) => x.margin)));
+        if (gap > 8) { signals[0].sigma = round1(signals[0].sigma * (gap / 8)); signals[0].label += ` — down-weighted, ${round1(gap)} pts from the race-specific evidence`; }
+      }
+      let wsum = 0, msum = 0;
+      for (const sg of signals) { sg.w = (sg.discount ?? 1) / sg.sigma ** 2; wsum += sg.w; msum += sg.w * sg.margin; }
+      for (const sg of signals) sg.share = Math.round((sg.w / wsum) * 100);
+      r.signals = signals;
+      r.margin = round1(msum / wsum);
+      r.sigma = round1(Math.max(1 / Math.sqrt(wsum), 3.5));
       r.pD = M.normCdf(r.margin / r.sigma);
       r.rating = M.rating(r.pD);
       r.elasticity = el;
@@ -492,7 +579,9 @@
 
     // --- Senate (class 2 + special elections for appointed seats ending Nov 2026) ---
     for (const s of G.CONGRESS.filter((m) => m.type === "sen" && (m.cls === 2 || m.end.startsWith("2026")))) {
-      const info = M.SENATE_2026_STATUS[s.state] ?? { status: "running" };
+      let info = M.SENATE_2026_STATUS[s.state] ?? { status: "running" };
+      const bp = SIG().notRunning.senate[s.state];
+      if (bp && info.status !== "open" && s.name.includes(bp.split(" ").pop())) info = { ...info, status: "open", note: `${bp} is not seeking re-election (Ballotpedia).` };
       const baseline = M.stateLean(s.state, { env: 0 }).margin;
       const party = s.caucus ?? s.party;
       const dir = party === "D" ? 1 : -1;
@@ -506,6 +595,9 @@
         challenger: info.challenger,
         baseline, incumbency: dir * INCUMBENCY.senate * factor, approvalEffect: 0,
         qualityEffect: round1(dir * clamp((q.score - 50) * 0.04, -2, 2) * factor), sigma: SIGMA.senate, personal: info.personal ?? 0,
+        moneyEffect: M.moneyEffect(`SEN-${s.state}`, info.challenger === "I" ? "I" : "D").effect,
+        money: M.moneyEffect(`SEN-${s.state}`, info.challenger === "I" ? "I" : "D"),
+        economyEffect: M.economyEffect(s.state, "senate"),
       });
     }
 
@@ -527,6 +619,7 @@
         approvalEffect: running ? 0 : round1(dir * (g.approval - 50) * 0.1),
         approvalWeight: running ? 1 : 0, approval: g.approval,
         qualityEffect: running ? round1(dir * clamp((q.score - 50) * 0.04, -2, 2)) : 0,
+        economyEffect: M.economyEffect(st, "governor", g.party),
         sigma: SIGMA.governor,
       });
     }
@@ -537,19 +630,30 @@
       for (let d = seats === 1 ? 0 : 1; d <= (seats === 1 ? 0 : seats); d++) {
         const rep = M.representative(st, d);
         const h = G.HOUSE24[`${st}-${d}`];
+        const id = `${st}-${d === 0 ? "AL" : String(d).padStart(2, "0")}`;
         const lean = M.districtLean(st, d, { env: 0 });
-        const prevParty = rep?.party ?? h?.wp ?? (lean.margin > 0 ? "D" : "R");
+        const retiring = rep && SIG().notRunning.house[id];
+        // Cook PVI on the 2026 lines (from the ratings table) replaces the 2024-based baseline in
+        // redistricted states and is averaged with it elsewhere. PVI D+x ≈ a 2x-point margin
+        // relative to the nation; the 2024 national presidential margin was R+1.5.
+        const pvi = SIG().ratings[id]?.pvi;
+        const pviBase = pvi != null ? 2 * pvi - 1.5 + (rep && !retiring ? (rep.party === "D" ? 1 : -1) * INCUMBENCY.house : 0) : null;
+        const baseline = pviBase == null ? lean.margin : M.REDISTRICTED_2026.includes(st) ? pviBase : (lean.margin + pviBase) / 2;
+        const prevParty = rep?.party ?? h?.wp ?? (baseline > 0 ? "D" : "R");
         const dir = prevParty === "D" ? 1 : -1;
         const q = rep ? M.qualification(rep) : null;
         addRace({
-          office: "house", id: `${st}-${d === 0 ? "AL" : String(d).padStart(2, "0")}`, state: st, district: d,
+          office: "house", id, state: st, district: d,
           title: `${M.states[st].name} ${d === 0 ? "at-large" : `District ${d}`}`,
           incumbent: rep ? { name: rep.name, party: rep.party, id: rep.id } : { name: "Vacant", party: prevParty },
-          status: rep ? "running" : "open", note: rep ? null : "Seat currently vacant.",
-          redistricted: M.REDISTRICTED_2026.includes(st),
-          baseline: lean.margin, incumbency: rep ? 0 : -dir * INCUMBENCY.house, approvalEffect: 0,
-          qualityEffect: q ? round1(dir * clamp((q.score - 50) * 0.02, -1, 1)) : 0,
-          sigma: SIGMA.house + (M.REDISTRICTED_2026.includes(st) ? 3 : 0),
+          status: rep && !retiring ? "running" : "open",
+          note: !rep ? "Seat currently vacant." : retiring ? `${retiring} is not seeking re-election (Ballotpedia).` : null,
+          redistricted: M.REDISTRICTED_2026.includes(st), pvi,
+          baseline: round1(baseline), incumbency: rep && !retiring ? 0 : -dir * INCUMBENCY.house, approvalEffect: 0,
+          qualityEffect: q && !retiring ? round1(dir * clamp((q.score - 50) * 0.02, -1, 1)) : 0,
+          moneyEffect: M.moneyEffect(id).effect, money: M.moneyEffect(id),
+          economyEffect: M.economyEffect(st, "house"),
+          sigma: SIGMA.house + (M.REDISTRICTED_2026.includes(st) && pvi == null ? 3 : 0),
         });
       }
     }
@@ -571,7 +675,7 @@
       });
     }
 
-    return { genericBallot: gb, swing: round1(swing), races, control: M.simulate(races) };
+    return { genericBallot: gb, climate, swing: round1(swing), races, control: M.simulate(races) };
   };
 
   // Seeded RNG so the numbers are stable between page loads.
