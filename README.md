@@ -10,6 +10,17 @@ An interactive U.S. political map. It needs no build step: open `index.html` in 
 - **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. A generic-ballot slider re-runs every race.
 - **Rubric & Methodology tab.** The full scoring rubric, weights and goalposts, state rankings, and every formula.
 
+## Install it on your phone
+
+The site is an installable web app: it has a manifest, home-screen icons, offline support through a service worker, and an **Install app** button.
+
+1. **Get it a public address (one time).** Merge into `main`, then in GitHub go to **Settings → Pages → Build and deployment → Source: GitHub Actions**. The `Deploy app to GitHub Pages` workflow publishes it at `https://nerdcoder10.github.io/political-percentage-website/` and redeploys after every data refresh.
+2. **Install it.**
+   - **Android (Chrome):** open the link and tap **Install app**, or use ⋮ → *Install app*.
+   - **iPhone/iPad (Safari):** open the link, tap **Share** → **Add to Home Screen**. The app's **Install app** button shows these steps.
+
+The installed app opens full-screen from its icon, works offline with the last data it saw, and picks up new data automatically.
+
 ## Run it
 
 ```bash

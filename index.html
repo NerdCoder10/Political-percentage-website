@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17202b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Political %">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Political Percentage</title>
   <meta name="description" content="Interactive U.S. political map: Republican / Democratic / Independent / Other percentages from the nation down to every county and major city, current leaders with biographies, a 1,000-point government performance rubric, and a 2026 midterm forecast.">
   <link rel="stylesheet" href="css/style.css">
@@ -14,11 +22,21 @@
       <span>Political Percentage</span>
     </div>
     <nav class="tabs" role="tablist" aria-label="Views">
-      <button role="tab" id="tab-map" aria-controls="view-map" aria-selected="true" data-tab="map">Map &amp; Leaders</button>
-      <button role="tab" id="tab-midterms" aria-controls="view-midterms" aria-selected="false" data-tab="midterms">2026 Midterm Forecast</button>
-      <button role="tab" id="tab-method" aria-controls="view-method" aria-selected="false" data-tab="method">Rubric &amp; Methodology</button>
+      <button role="tab" id="tab-map" aria-controls="view-map" aria-selected="true" data-tab="map"><span class="tab-long">Map &amp; Leaders</span><span class="tab-short">Map</span></button>
+      <button role="tab" id="tab-midterms" aria-controls="view-midterms" aria-selected="false" data-tab="midterms"><span class="tab-long">2026 Midterm Forecast</span><span class="tab-short">Midterms</span></button>
+      <button role="tab" id="tab-method" aria-controls="view-method" aria-selected="false" data-tab="method"><span class="tab-long">Rubric &amp; Methodology</span><span class="tab-short">Rubric</span></button>
     </nav>
+    <button id="install-btn" class="install-btn" hidden>Install app</button>
   </header>
+  <div id="install-help" class="install-help" role="dialog" aria-label="Install on iPhone or iPad" hidden>
+    <p><b>Add Political Percentage to your Home Screen</b></p>
+    <ol>
+      <li>Tap the <b>Share</b> button in Safari's toolbar (the square with an arrow).</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Tap <b>Add</b>. The app opens full-screen from its icon.</li>
+    </ol>
+    <button class="btn-ghost">Got it</button>
+  </div>
 
   <!-- TAB 1: map background + detail panel -->
   <main id="view-map" class="view" role="tabpanel" aria-labelledby="tab-map">
@@ -104,5 +122,6 @@
   <script src="js/model.js"></script>
   <script src="js/app.js"></script>
   <script src="js/refresh.js"></script>
+  <script src="js/pwa.js"></script>
 </body>
 </html>

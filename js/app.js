@@ -446,7 +446,7 @@
     const h = currentTab !== "map" ? currentTab
       : view.level === "state" ? `state/${view.st}` : view.level === "county" ? `county/${view.fips}`
       : view.level === "city" ? `city/${encodeURIComponent(CITIES[view.city][0] + "|" + view.st)}` : "";
-    history.replaceState(null, "", h ? "#" + h : location.pathname + location.search);
+    try { history.replaceState(null, "", h ? "#" + h : location.pathname + location.search); } catch { /* sandboxed frame */ }
   }
   function fromHash() {
     const [kind, arg] = decodeURIComponent(location.hash.slice(1)).split("/");
