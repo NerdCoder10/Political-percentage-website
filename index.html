@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#17202b">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Political %">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Political Percentage</title>
+  <meta name="description" content="Interactive U.S. political map: Republican / Democratic / Independent / Other percentages from the nation down to every county and major city, current leaders with biographies, a 1,000-point government performance rubric, and a 2026 midterm forecast.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i class="r"></i><i class="d"></i></span>
+      <span>Political Percentage</span>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Views">
+      <button role="tab" id="tab-map" aria-controls="view-map" aria-selected="true" data-tab="map"><span class="tab-long">Map &amp; Leaders</span><span class="tab-short">Map</span></button>
+      <button role="tab" id="tab-midterms" aria-controls="view-midterms" aria-selected="false" data-tab="midterms"><span class="tab-long">2026 Midterm Forecast</span><span class="tab-short">Midterms</span></button>
+      <button role="tab" id="tab-method" aria-controls="view-method" aria-selected="false" data-tab="method"><span class="tab-long">Rubric &amp; Methodology</span><span class="tab-short">Rubric</span></button>
+    </nav>
+    <button id="install-btn" class="install-btn" hidden>Install app</button>
+  </header>
+  <div id="install-help" class="install-help" role="dialog" aria-label="Install on iPhone or iPad" hidden>
+    <p><b>Add Political Percentage to your Home Screen</b></p>
+    <ol>
+      <li>Tap the <b>Share</b> button in Safari's toolbar (the square with an arrow).</li>
+      <li>Scroll down and tap <b>Add to Home Screen</b>.</li>
+      <li>Tap <b>Add</b>. The app opens full-screen from its icon.</li>
+    </ol>
+    <button class="btn-ghost">Got it</button>
+  </div>
+
+  <!-- TAB 1: map background + detail panel -->
+  <main id="view-map" class="view" role="tabpanel" aria-labelledby="tab-map">
+    <div id="map" class="map" aria-label="Map of the United States colored by political lean"></div>
+    <div class="map-controls">
+      <nav id="crumbs" class="crumbs" aria-label="Breadcrumb"></nav>
+      <div class="search">
+        <input id="search" type="search" placeholder="Search a state, county or city…" autocomplete="off" aria-label="Search places">
+        <ul id="search-results" class="search-results" role="listbox" hidden></ul>
+      </div>
+      <div class="seg" role="group" aria-label="Map coloring">
+        <button data-color="states" aria-pressed="true">States</button>
+        <button data-color="counties" aria-pressed="false">Counties</button>
+      </div>
+    </div>
+    <div class="legend" aria-hidden="true">
+      <div class="legend-bar"></div>
+      <div class="legend-labels"><span>R +40</span><span>Even</span><span>D +40</span></div>
+      <div class="legend-note">Current lean (algorithm) · click any state, county or city</div>
+    </div>
+    <div id="tooltip" class="tooltip" hidden></div>
+    <aside id="panel" class="panel" aria-live="polite"></aside>
+  </main>
+
+  <!-- TAB 2: midterms -->
+  <main id="view-midterms" class="view page" role="tabpanel" aria-labelledby="tab-midterms" hidden>
+    <div class="page-inner">
+      <h1>2026 Midterm Forecast</h1>
+      <p class="lede">Win probabilities for every U.S. Senate, U.S. House and governor's race, plus big-city mayoral races on the ballot on <strong>November 3, 2026</strong>. They come from an algorithm that combines partisan lean, the national climate, incumbency, public approval and qualifications (see the Methodology tab).</p>
+      <div class="controls-row">
+        <label class="slider">
+          <span>National environment (generic ballot): <strong id="gb-label"></strong></span>
+          <input id="gb" type="range" min="-8" max="12" step="0.1">
+        </label>
+        <button id="gb-reset" class="btn-ghost">Reset to polling average</button>
+      </div>
+      <div id="summary" class="summary-cards"></div>
+      <div class="controls-row filters">
+        <div class="seg" role="group" aria-label="Office filter" id="office-filter">
+          <button data-office="all" aria-pressed="true">All</button>
+          <button data-office="senate" aria-pressed="false">Senate</button>
+          <button data-office="governor" aria-pressed="false">Governor</button>
+          <button data-office="house" aria-pressed="false">House</button>
+          <button data-office="mayor" aria-pressed="false">Mayor</button>
+        </div>
+        <select id="state-filter" aria-label="State filter"></select>
+        <select id="sort" aria-label="Sort races">
+          <option value="close">Most competitive first</option>
+          <option value="d">Most Democratic first</option>
+          <option value="r">Most Republican first</option>
+          <option value="name">By name</option>
+        </select>
+        <input id="race-search" type="search" placeholder="Filter by name…" aria-label="Filter races by name">
+      </div>
+      <div class="table-wrap">
+        <table class="races">
+          <thead><tr><th>Race</th><th>Incumbent</th><th>Seat</th><th>Rating</th><th class="prob-col">Win probability</th></tr></thead>
+          <tbody id="race-rows"></tbody>
+        </table>
+      </div>
+      <p class="fine" id="race-count"></p>
+    </div>
+  </main>
+
+  <!-- TAB 3: methodology -->
+  <main id="view-method" class="view page" role="tabpanel" aria-labelledby="tab-method" hidden>
+    <div class="page-inner" id="method"></div>
+  </main>
+
+  <script src="lib/d3.min.js"></script>
+  <script src="lib/topojson-client.min.js"></script>
+  <script src="data/states-meta.js"></script>
+  <script src="data/generated/atlas.js"></script>
+  <script src="data/generated/elections.js"></script>
+  <script src="data/generated/house2024.js"></script>
+  <script src="data/generated/congress.js"></script>
+  <script src="data/generated/cities.js"></script>
+  <script src="data/leaders.js"></script>
+  <script src="data/state-indicators.js"></script>
+  <script src="data/polling.js"></script>
+  <script src="data/generated/indicators.js"></script>
+  <script src="data/generated/version.js"></script>
+  <script src="js/model.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/refresh.js"></script>
+  <script src="js/pwa.js"></script>
+</body>
+</html>

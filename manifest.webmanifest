@@ -1,0 +1,21 @@
+{
+  "name": "Political Percentage",
+  "short_name": "Political %",
+  "description": "U.S. political lean from nation to city, current leaders, a 1,000-point government rubric and the 2026 midterm forecast.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#17202b",
+  "theme_color": "#17202b",
+  "categories": ["news", "education", "politics"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "2026 Midterm Forecast", "url": "./#midterms", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Rubric & Methodology", "url": "./#method", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "political-percentage-website",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive U.S. political lean map, 1000-point government rubric, leader bios and 2026 midterm forecast.",
+  "type": "module",
+  "scripts": {
+    "build:data": "node scripts/build-data.mjs",
+    "fetch:indicators": "node scripts/fetch-indicators.mjs",
+    "stamp": "node scripts/stamp-version.mjs",
+    "refresh": "node scripts/build-data.mjs --refresh && node scripts/fetch-indicators.mjs --refresh && node scripts/stamp-version.mjs",
+    "check": "node scripts/check.mjs",
+    "serve": "python3 -m http.server 8080"
+  },
+  "devDependencies": {
+    "adm-zip": "^0.5.16",
+    "d3": "7.9.0",
+    "topojson-client": "3.1.0",
+    "us-atlas": "3.0.1",
+    "xlsx": "^0.18.5"
+  }
+}

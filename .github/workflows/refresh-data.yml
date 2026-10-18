@@ -1,0 +1,58 @@
+name: Refresh data
+
+# Re-downloads every data source every 30 minutes and commits only when something changed.
+# GitHub runs scheduled workflows from the default branch, and start times can drift by a few
+# minutes under load.
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Keep the raw downloads between runs so unchanged files are skipped (If-Modified-Since).
+      - uses: actions/cache@v4
+        with:
+          path: scripts/raw
+          key: raw-data-${{ github.run_id }}
+          restore-keys: raw-data-
+
+      - name: Download and rebuild data
+        env:
+          # BLS rejects requests without a contact address; set this repository secret to your email.
+          DATA_CONTACT_EMAIL: ${{ secrets.DATA_CONTACT_EMAIL }}
+        run: npm run refresh
+
+      - name: Sanity checks
+        run: npm run check
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- data/generated; then
+            echo "No data changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/generated
+          git commit -m "Refresh data ($(date -u +'%Y-%m-%d %H:%M UTC'))"
+          git push
