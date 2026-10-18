@@ -1,7 +1,7 @@
 // Service worker: makes the app installable and usable offline.
-//   - App shell (HTML, CSS, JS, libraries, icons): served from cache, refreshed in the background.
-//   - Data files (data/**): network first so the 30-minute data refresh shows up, cache as fallback.
-const CACHE = "political-percentage-v2";
+//   Every request goes to the network first, so app and data updates appear immediately;
+//   the cached copy is used only when the phone is offline.
+const CACHE = "political-percentage-v3";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "css/style.css",
   "lib/d3.min.js", "lib/topojson-client.min.js",
@@ -27,27 +27,21 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
   if (req.method !== "GET" || url.origin !== location.origin) return;
-  const isData = url.pathname.includes("/data/");
-  event.respondWith(isData ? networkFirst(req) : staleWhileRevalidate(req, event));
+  // Network first for everything, so code and data changes appear on the next load;
+  // the cache is only the offline fallback.
+  event.respondWith(networkFirst(req));
 });
 
 async function networkFirst(req) {
   const cache = await caches.open(CACHE);
   try {
-    const res = await fetch(req, { cache: "no-store" });
+    // Page navigations can't be re-issued with options, so fetch them by URL.
+    const res = await fetch(req.mode === "navigate" ? req.url : req, { cache: "no-store" });
     if (res.ok) cache.put(stripQuery(req), res.clone());
     return res;
   } catch {
     return (await cache.match(stripQuery(req))) ?? Response.error();
   }
-}
-
-async function staleWhileRevalidate(req, event) {
-  const cache = await caches.open(CACHE);
-  const cached = await cache.match(req, { ignoreSearch: true });
-  const update = fetch(req).then((res) => { if (res.ok) cache.put(req, res.clone()); return res; }).catch(() => cached);
-  if (cached) { event.waitUntil(update); return cached; }
-  return update;
 }
 
 // version.js is requested with a cache-busting ?t= query; store it under its plain URL.
