@@ -1,14 +1,14 @@
 // Service worker: makes the app installable and usable offline.
 //   - App shell (HTML, CSS, JS, libraries, icons): served from cache, refreshed in the background.
 //   - Data files (data/**): network first so the 30-minute data refresh shows up, cache as fallback.
-const CACHE = "political-percentage-v1";
+const CACHE = "political-percentage-v2";
 const SHELL = [
   "./", "index.html", "manifest.webmanifest", "css/style.css",
   "lib/d3.min.js", "lib/topojson-client.min.js",
   "js/model.js", "js/app.js", "js/refresh.js", "js/pwa.js",
   "data/states-meta.js", "data/leaders.js", "data/state-indicators.js", "data/polling.js",
   "data/generated/atlas.js", "data/generated/elections.js", "data/generated/house2024.js",
-  "data/generated/congress.js", "data/generated/cities.js", "data/generated/indicators.js", "data/generated/version.js",
+  "data/generated/congress.js", "data/generated/cities.js", "data/generated/indicators.js", "data/generated/signals.js", "data/generated/version.js",
   "icons/icon-192.png", "icons/icon-512.png", "icons/favicon-32.png",
 ];
 

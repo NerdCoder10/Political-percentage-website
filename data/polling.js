@@ -43,6 +43,17 @@ globalThis.POLLING = {
     },
   },
 
+  // How Democrats ran in 2025–26 special elections compared with the 2024 presidential margin
+  // of the same districts (points). Used as one of three measures of the national climate.
+  specialElections: {
+    value: 11.5,
+    polls: [
+      { pollster: "MultiState (42 contested 2026 state legislative specials, median)", date: "2026-10-14", margin: 10.4, url: "https://www.multistate.us/insider/2026/10/14/democrats-special-election-edge-still-points-to-a-big-year-democratic-wave" },
+      { pollster: "MultiState (turnout-weighted)", date: "2026-10-14", margin: 12.6, url: "https://www.multistate.us/elections/special-elections-2026" },
+      { pollster: "The Downballot / Brookings (2026 specials, mean)", date: "2026", margin: 11, url: "https://theconversation.com/do-special-election-results-spell-doom-for-republicans-in-2026-274912" },
+    ],
+  },
+
   // approve / disapprove in %. `scale: "rating"` = excellent/good vs fair/poor wording (reads lower);
   // `scale: "favorability"` = favorable/unfavorable rather than job approval.
   governorApproval: {

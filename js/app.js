@@ -490,8 +490,8 @@
         <div class="big"><span class="txt-D">${govD} D</span> · <span class="txt-R">${50 - govD} R</span></div>
         ${split(govD / 50)}<div class="sub">${gov.length} races on the ballot; expected value from race probabilities.</div></div>
       <div class="card"><div class="label">National climate</div>
-        <div class="big">${gbLabel(+gbEl.value)}</div>
-        <div class="sub">Swing vs. 2024 House vote (${M.houseNationalMargin24 > 0 ? "D" : "R"}+${fmt(Math.abs(M.houseNationalMargin24))}): <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>. Presidential approval ≈ ${NATIONAL_OPINION.presidentApproval}%.</div></div>`;
+        <div class="big">${gbLabel(forecast.climate.value)}</div>
+        <div class="sub">${forecast.climate.parts.map((x) => `${esc(x.label)}: <b>${gbLabel(x.value)}</b> (${Math.round(x.weight * 100)}%)`).join("<br>")}<br>Swing vs. 2024 House vote: <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>.</div></div>`;
     renderRaceTable();
   }
 
@@ -525,25 +525,36 @@
   }
   function raceDetail(r) {
     const f = (v) => `${v > 0 ? "D+" : v < 0 ? "R+" : "±"}${fmt(Math.abs(v))}`;
+    const money = (x) => (x ? `${esc(x.name)} $${(x.receipts / 1e6).toFixed(x.receipts >= 1e6 ? 1 : 2)}M raised` : "—");
+    const SRC = globalThis.RACE_SIGNALS?.sources ?? {};
     return `<tr class="detail"><td colspan="5">
       ${r.note ? `<p>${esc(r.note)}</p>` : ""}
+      <h4 class="detail-h">How the evidence combines</h4>
+      <div class="table-wrap"><table class="signals">
+        <thead><tr><th>Signal</th><th class="num">Estimated margin</th><th class="num">Uncertainty</th><th class="num">Weight</th></tr></thead>
+        <tbody>${r.signals.map((sg) => `<tr><td>${esc(sg.label)}</td><td class="num">${f(sg.margin)}</td><td class="num">±${fmt(sg.sigma)}</td><td class="num">${sg.share}%</td></tr>`).join("")}
+          <tr class="total"><td>Combined forecast</td><td class="num">${f(r.margin)}</td><td class="num">±${r.sigma}</td><td class="num">${fmt(r.pD * 100)}% ${r.challenger === "I" ? "Ind." : "D"}</td></tr></tbody>
+      </table></div>
+      <h4 class="detail-h">Fundamentals breakdown</h4>
       <div class="factors">
-        <div>Partisan baseline<b>${f(r.baseline)}</b></div>
+        <div>Partisan baseline${r.pvi != null ? ` (Cook PVI ${r.pvi > 0 ? "D" : r.pvi < 0 ? "R" : "EVEN"}${r.pvi ? "+" + Math.abs(r.pvi) : ""})` : ""}<b>${f(r.baseline)}</b></div>
         <div>National climate<b>${f(r.climate)}</b></div>
         <div>Incumbency<b>${f(r.incumbency)}</b></div>
         <div>Approval (public opinion)<b>${f(r.approvalEffect)}</b></div>
         <div>Qualifications<b>${f(r.qualityEffect)}</b></div>
+        <div>Campaign money (FEC)<b>${f(r.moneyEffect)}</b></div>
+        <div>State economy<b>${f(r.economyEffect)}</b></div>
         ${r.personal ? `<div>Candidate personal vote<b>${f(r.personal)}</b></div>` : ""}
-        <div>Fundamentals margin<b>${f(r.fundamentals)}</b></div>
-        ${r.poll ? `<div>Poll average (${r.poll.polls.length} source${r.poll.polls.length > 1 ? "s" : ""})<b>${f(r.poll.margin)}</b></div><div>Poll weight<b>${Math.round(r.poll.weight * 100)}%</b></div>` : ""}
-        <div>Final margin<b>${f(r.margin)}</b></div>
-        <div>Uncertainty (σ)<b>±${r.sigma} pts</b></div>
+        <div>Fundamentals total<b>${f(r.fundamentals)}</b></div>
       </div>
-      ${r.poll ? `<p class="fine"><b>${esc(r.poll.D)}</b> (${r.challenger === "I" ? "I" : "D"}) vs. <b>${esc(r.poll.R)}</b> (R). Polls used — ${esc(r.poll.basis)}:</p>
+      ${r.money && (r.money.d || r.money.r) ? `<p class="fine">Fundraising (<a href="${esc(SRC.money?.url ?? "#")}" target="_blank" rel="noopener">FEC</a>): ${money(r.money.d)} · ${money(r.money.r)}.</p>` : ""}
+      ${r.poll ? `<p class="fine"><b>${esc(r.poll.D)}</b> (${r.challenger === "I" ? "I" : "D"}) vs. <b>${esc(r.poll.R)}</b> (R). Polls used: ${esc(r.poll.basis)}.</p>
         <ul class="sources">${r.poll.polls.map((x) => pollLine(x, "race")).join("")}</ul>
         ${r.poll.excluded?.length ? `<p class="fine">Excluded as sponsored:</p><ul class="sources">${r.poll.excluded.map((x) => pollLine(x, "race")).join("")}</ul>` : ""}
-        ${r.poll.note ? `<p class="fine">${esc(r.poll.note)}</p>` : ""}` : `<p class="fine">No published head-to-head polling found for this race; the forecast uses fundamentals only.</p>`}
-      <p class="fine">Win probability = Φ(final margin ÷ σ) = Φ(${fmt(r.margin)} ÷ ${r.sigma}) = ${fmt(r.pD * 100)}% ${r.challenger === "I" ? "independent" : "Democratic"}.
+        ${r.poll.note ? `<p class="fine">${esc(r.poll.note)}</p>` : ""}` : `<p class="fine">No published head-to-head polling found for this race.</p>`}
+      ${r.ratings ? `<p class="fine">Expert ratings (<a href="${esc(SRC.ratings?.url ?? "#")}" target="_blank" rel="noopener">compiled on Wikipedia</a>): ${r.ratings.ratings.map((x) => `${esc(x.by)} <b>${esc(x.rating)}</b>`).join(" · ")}</p>` : ""}
+      ${r.market ? `<p class="fine">Prediction market: <a href="${esc(r.market.url)}" target="_blank" rel="noopener">Kalshi</a> prices ${esc(r.market.D ?? "Democrat")} at ${Math.round(r.market.pD * 100)}% and ${esc(r.market.R ?? "Republican")} at ${Math.round((1 - r.market.pD) * 100)}%.</p>` : ""}
+      <p class="fine">Win probability = Φ(combined margin ÷ σ) = Φ(${fmt(r.margin)} ÷ ${r.sigma}) = ${fmt(r.pD * 100)}% ${r.challenger === "I" ? "independent" : "Democratic"}.
       ${r.office !== "mayor" ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px" data-open-state="${r.state}">View ${esc(M.states[r.state].name)} on the map</button>` : ""}</p>
     </td></tr>`;
   }
@@ -605,17 +616,28 @@ Other       = 0.4 · non-major vote + 0.4%
       <p>Qualification score (0–100) = years in elected office × 3 (max 45) + 12 per prior public office (max 35) + 6 per relevant professional credential such as law, military, medicine, business or education (max 15) + 5 for a party-leadership role. Possible next moves come from rules that look at term limits, age, the office's next election, open seats in the state, how safe the seat is, and the 2026 forecast.</p>
 
       <h2>4. 2026 midterm forecast</h2>
-<pre class="formula">expected D margin = partisan baseline
-                  + (generic ballot − 2024 House margin) × elasticity
-                  + incumbency (Senate ±2.5, Governor ±3; open House seats −3 for the departing party)
-                  + qualification edge  ((score − 50) × 0.04, max ±2)
-                  + approval effect for running governors  (0.5 × (approval − (50 + ½ party lead)), max ±12)
-                  + documented personal vote (e.g. Collins −12, Osborn +12)
-final margin      = w × head-to-head poll average + (1 − w) × expected margin
-                    w = 0.35 + 0.1 per independent poll (an aggregator average counts as 3), max 0.7
-P(win) = Φ(final margin ÷ σ)      σ = 6 Senate · 6.5 House (+3 if redistricted) · 7 Governor · 8 Mayor,
-                                   shrinking by up to 25% as polling weight grows</pre>
-      <p>Chamber control comes from 20,000 simulated elections. Each simulation draws one shared national polling error (σ = 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties. Move the generic-ballot slider on the forecast tab to see how every race responds.</p>
+      <p>Every race combines all available evidence. Each kind of evidence is turned into an estimated Democratic margin with an uncertainty, then they are averaged with <b>inverse-variance weights</b>: more precise evidence counts more.</p>
+<pre class="formula">Fundamentals (σ 6–10)  = partisan baseline (vote history; Cook PVI on 2026 lines for House seats)
+                        + national climate × elasticity
+                        + incumbency (Senate ±2.5, Governor ±3, open House seats −3 for the departing party)
+                        + governor approval vs. partisan expectation (0.5 × gap, max ±12)
+                        + qualifications ((score − 50) × 0.04, max ±2)
+                        + campaign money (2 × ln(D receipts ÷ R receipts), FEC, max ±4)
+                        + state economy (unemployment and GDP growth vs. the nation, max ±2)
+                        + documented personal vote (e.g. Collins, Osborn)
+Head-to-head polls (σ = 2.5 + 5 ÷ √polls)       — independent polls only, sponsored polls excluded
+Expert ratings     (σ 6; 10 if every rater says Safe) — average of up to 10 forecasters:
+                     Safe/Solid ±15 · Likely ±8 · Lean ±4 · Tilt ±1.5 · Toss-up 0
+Prediction market  (σ 5)  — Kalshi price converted to a margin: Φ⁻¹(price) × 6
+
+weight = 1 ÷ σ²   (polls, ratings and markets × 0.6, because they partly react to one another)
+Governor fundamentals use σ 10 (ticket-splitting). If fundamentals sit more than 8 pts from the
+average of the race-specific evidence, their σ is multiplied by (gap ÷ 8).
+combined margin = Σ weight × margin ÷ Σ weight      combined σ = max(1 ÷ √Σ weight, 3.5)
+P(win) = Φ(combined margin ÷ combined σ)</pre>
+      <p><b>National climate</b> = 50% generic ballot (${gbLabel(POLLING.national.genericBallot.value)}) + 25% presidential approval (${POLLING.national.presidentApproval.value}% → 0.7 × (50 − approval), the relationship seen in the 2006, 2010, 2018 and 2022 midterms) + 25% special-election swing (D+${POLLING.specialElections?.value ?? "—"} vs. 2024, discounted to 60% because special-election electorates exaggerate swings) = <b>${gbLabel(M.climateParts().value)}</b>.</p>
+      <p><b>Who is running:</b> Ballotpedia's list of members not seeking re-election marks open seats in both chambers. Nominees are named from published polls, prediction markets, and each party's leading fundraiser in FEC filings.</p>
+      <p>Chamber control comes from 20,000 simulated elections. Each one draws a single shared national error (σ 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties. The generic-ballot slider on the forecast tab changes the climate input and re-runs every race.</p>
 
       <h2>5. Sources &amp; neutrality</h2>
       <p>Approval ratings, national polling and race polls come from published polls collected from news coverage on ${esc(POLLING.asOf)}. Each number lists its pollster, field date and a link. These rules keep the inputs as neutral as possible:</p>
@@ -625,7 +647,7 @@ P(win) = Φ(final margin ÷ σ)      σ = 6 Senate · 6.5 House (+3 if redistric
         <li><b>Simple averages.</b> No pollster grades or "house effect" corrections, so anyone can reproduce the number.</li>
         <li><b>Neutral imputation.</b> A governor with no qualifying poll gets the median of all sourced governors (${fmt(M.approvalMedian)}%), not a guess in either direction.</li>
         <li><b>Several aggregators for national numbers.</b> President approval (${fmt(POLLING.national.presidentApproval.value)}%) and the generic ballot (D+${fmt(POLLING.national.genericBallot.value)}) average aggregators with differently leaning audiences: ${POLLING.national.genericBallot.polls.map((x) => esc(x.pollster)).join(", ")}.</li>
-        <li><b>Polls inform the forecast but don't replace it.</b> Head-to-head polls get at most 70% weight, and the rest comes from the vote-history fundamentals, so a single outlier can't swing a race.</li>
+        <li><b>No single source decides a race.</b> Polls, expert ratings (from forecasters with a range of perspectives), prediction markets, fundraising, the economy and vote history are combined by precision weighting, so one outlier can't swing a race.</li>
       </ol>
       <div class="table-wrap"><table class="method-table">
         <thead><tr><th>State</th><th>Governor</th><th class="num">Approval used</th><th>Basis</th></tr></thead>
