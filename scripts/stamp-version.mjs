@@ -1,4 +1,4 @@
-// Writes data/generated/version.js: a content hash of every data file the site loads.
+// Writes data/generated/version.js: a content hash of the app code and every data file the site loads.
 // The page polls this file every 30 minutes and reloads itself when the hash changes.
 import fs from "node:fs";
 import path from "node:path";
@@ -6,7 +6,9 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const FILES = ["data/states-meta.js", "data/leaders.js", "data/state-indicators.js", "data/polling.js",
+// App code is included so an installed app also updates itself after code changes.
+const FILES = ["index.html", "manifest.webmanifest", "sw.js", "css/style.css", "js/app.js", "js/model.js", "js/pwa.js", "js/refresh.js",
+  "data/states-meta.js", "data/leaders.js", "data/state-indicators.js", "data/polling.js",
   ...fs.readdirSync(path.join(ROOT, "data/generated")).filter((f) => f.endsWith(".js") && f !== "version.js").sort().map((f) => `data/generated/${f}`)];
 const hash = crypto.createHash("sha256");
 for (const f of FILES) hash.update(fs.readFileSync(path.join(ROOT, f)));
