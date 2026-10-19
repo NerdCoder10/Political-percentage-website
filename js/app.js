@@ -461,9 +461,17 @@
   const gbEl = $("#gb");
   const gbLabel = (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`);
   let officeFilter = "all", openRace = null;
-  gbEl.value = NATIONAL_OPINION.genericBallot;
-  gbEl.addEventListener("input", () => { forecast = M.forecast({ genericBallot: +gbEl.value }); races = raceById(); renderMidterms(); });
-  $("#gb-reset").addEventListener("click", () => { gbEl.value = NATIONAL_OPINION.genericBallot; gbEl.dispatchEvent(new Event("input")); });
+  gbEl.value = NATIONAL_OPINION.climate;
+  gbEl.addEventListener("input", () => { forecast = M.forecast({ climate: +gbEl.value }); races = raceById(); renderMidterms(); });
+  $("#gb-reset").addEventListener("click", () => { gbEl.value = NATIONAL_OPINION.climate; gbEl.dispatchEvent(new Event("input")); });
+
+  // ---- Followed races: saved on this device (localStorage), shown with the "Following" filter.
+  const FOLLOW_KEY = "pp-following";
+  const loadFollowing = () => { try { return new Set(JSON.parse(localStorage.getItem(FOLLOW_KEY) ?? "[]")); } catch { return new Set(); } };
+  let following = loadFollowing();
+  const saveFollowing = () => { try { localStorage.setItem(FOLLOW_KEY, JSON.stringify([...following])); } catch { /* storage blocked: keeps working for this visit */ } };
+  const updateFollowCount = () => { const b = $("#follow-count"); if (b) b.textContent = following.size ? ` (${following.size})` : ""; };
+  updateFollowCount();
   $("#state-filter").innerHTML = `<option value="">All states</option>` + Object.values(M.states).sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<option value="${s.abbr}">${esc(s.name)}</option>`).join("");
   ["#state-filter", "#sort", "#race-search"].forEach((s) => $(s).addEventListener("input", renderRaceTable));
   document.querySelectorAll("[data-office]").forEach((b) => b.addEventListener("click", () => {
@@ -473,7 +481,7 @@
   }));
 
   function renderMidterms() {
-    $("#gb-label").textContent = gbLabel(+gbEl.value) + (+gbEl.value === NATIONAL_OPINION.genericBallot ? " (current polling average)" : "");
+    $("#gb-label").textContent = gbLabel(+gbEl.value) + (+gbEl.value === NATIONAL_OPINION.climate ? " (special-election estimate)" : " (your setting)");
     const c = forecast.control;
     const gov = forecast.races.filter((r) => r.office === "governor");
     const notUp = Object.entries(GOVERNORS).filter(([k, g]) => k !== "DC" && g.status2026 === "not-up");
@@ -491,14 +499,14 @@
         ${split(govD / 50)}<div class="sub">${gov.length} races on the ballot; expected value from race probabilities.</div></div>
       <div class="card"><div class="label">National climate</div>
         <div class="big">${gbLabel(forecast.climate.value)}</div>
-        <div class="sub">${forecast.climate.parts.map((x) => `${esc(x.label)}: <b>${gbLabel(x.value)}</b> (${Math.round(x.weight * 100)}%)`).join("<br>")}<br>Swing vs. 2024 House vote: <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>.</div></div>`;
+        <div class="sub">${forecast.climate.parts.map((x) => `${esc(x.label)}: <b>${gbLabel(x.value)}</b>`).join("<br>")}<br>No polls are used.<br>Swing vs. 2024 House vote: <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>.</div></div>`;
     renderRaceTable();
   }
 
   const officeOrder = { senate: 0, governor: 1, house: 2, mayor: 3 };
   function renderRaceTable() {
     const st = $("#state-filter").value, q = $("#race-search").value.trim().toLowerCase(), sort = $("#sort").value;
-    let list = forecast.races.filter((r) => (officeFilter === "all" || r.office === officeFilter) && (!st || r.state === st)
+    let list = forecast.races.filter((r) => (officeFilter === "all" || (officeFilter === "following" ? following.has(r.id) : r.office === officeFilter)) && (!st || r.state === st)
       && (!q || (r.title + " " + r.incumbent.name).toLowerCase().includes(q)));
     const cmp = {
       close: (a, b) => Math.abs(a.pD - 0.5) - Math.abs(b.pD - 0.5) || officeOrder[a.office] - officeOrder[b.office],
@@ -507,13 +515,19 @@
     }[sort];
     list.sort(cmp);
     const shown = list.slice(0, 600);
+    if (officeFilter === "following" && !shown.length) {
+      $("#race-rows").innerHTML = `<tr><td colspan="5" class="empty">You aren't following any races yet. Tap the ☆ next to any race to add it here. Your list is saved on this device.</td></tr>`;
+      $("#race-count").textContent = "";
+      return;
+    }
     $("#race-rows").innerHTML = shown.map((r) => {
       const pD = Math.round(r.pD * 100);
       const dLabel = r.challenger === "I" ? "Ind" : "D";
       const cls = r.rating.tier === 0 ? "T" : r.rating.side + r.rating.tier;
       const seatText = r.status === "open" ? "Open seat" : r.status === "uncertain" ? "Incumbent (uncertain)" : "Incumbent running";
       const row = `<tr class="race" data-race="${r.id}" aria-expanded="${openRace === r.id}">
-        <td><div class="race-title">${esc(r.title)}<small>${r.office === "house" ? r.id : r.office[0].toUpperCase() + r.office.slice(1)}${r.redistricted ? " · new 2026 map" : ""}${r.poll ? ` · ${esc(r.poll.D)} vs. ${esc(r.poll.R)} · polled` : ""}</small></div></td>
+        <td><div class="race-cell"><button class="star" data-follow="${r.id}" aria-pressed="${following.has(r.id)}" aria-label="${following.has(r.id) ? "Stop following" : "Follow"} ${esc(r.title)}">${following.has(r.id) ? "★" : "☆"}</button>
+          <div class="race-title">${esc(r.title)}<small>${r.office === "house" ? r.id : r.office[0].toUpperCase() + r.office.slice(1)}${r.redistricted ? " · new 2026 map" : ""}${r.nominees ? ` · ${esc(r.nominees.D)} vs. ${esc(r.nominees.R)}` : r.market?.D && r.market?.R ? ` · ${esc(r.market.D)} vs. ${esc(r.market.R)}` : ""}</small></div></div></td>
         <td>${esc(r.incumbent.name)} <span class="chip ${r.incumbent.party}">${r.incumbent.party}</span></td>
         <td>${seatText}</td>
         <td><span class="pill ${cls}">${r.rating.label.replace(" D", r.challenger === "I" ? " Ind" : " D")}</span></td>
@@ -528,6 +542,7 @@
     const money = (x) => (x ? `${esc(x.name)} $${(x.receipts / 1e6).toFixed(x.receipts >= 1e6 ? 1 : 2)}M raised` : "—");
     const SRC = globalThis.RACE_SIGNALS?.sources ?? {};
     return `<tr class="detail"><td colspan="5">
+      <p class="fine">Incumbent: <b>${esc(r.incumbent.name)}</b> (${esc(r.incumbent.party)}) · ${r.status === "open" ? "open seat" : r.status === "uncertain" ? "incumbent's plans uncertain" : "incumbent running"}</p>
       ${r.note ? `<p>${esc(r.note)}</p>` : ""}
       <h4 class="detail-h">How the evidence combines</h4>
       <div class="table-wrap"><table class="signals">
@@ -548,10 +563,7 @@
         <div>Fundamentals total<b>${f(r.fundamentals)}</b></div>
       </div>
       ${r.money && (r.money.d || r.money.r) ? `<p class="fine">Fundraising (<a href="${esc(SRC.money?.url ?? "#")}" target="_blank" rel="noopener">FEC</a>): ${money(r.money.d)} · ${money(r.money.r)}.</p>` : ""}
-      ${r.poll ? `<p class="fine"><b>${esc(r.poll.D)}</b> (${r.challenger === "I" ? "I" : "D"}) vs. <b>${esc(r.poll.R)}</b> (R). Polls used: ${esc(r.poll.basis)}.</p>
-        <ul class="sources">${r.poll.polls.map((x) => pollLine(x, "race")).join("")}</ul>
-        ${r.poll.excluded?.length ? `<p class="fine">Excluded as sponsored:</p><ul class="sources">${r.poll.excluded.map((x) => pollLine(x, "race")).join("")}</ul>` : ""}
-        ${r.poll.note ? `<p class="fine">${esc(r.poll.note)}</p>` : ""}` : `<p class="fine">No published head-to-head polling found for this race.</p>`}
+      ${r.nominees ? `<p class="fine"><b>${esc(r.nominees.D)}</b> (${r.challenger === "I" ? "I" : "D"}) vs. <b>${esc(r.nominees.R)}</b> (R).</p>` : ""}
       ${r.ratings ? `<p class="fine">Expert ratings (<a href="${esc(SRC.ratings?.url ?? "#")}" target="_blank" rel="noopener">compiled on Wikipedia</a>): ${r.ratings.ratings.map((x) => `${esc(x.by)} <b>${esc(x.rating)}</b>`).join(" · ")}</p>` : ""}
       ${r.market ? `<p class="fine">Prediction market: <a href="${esc(r.market.url)}" target="_blank" rel="noopener">Kalshi</a> prices ${esc(r.market.D ?? "Democrat")} at ${Math.round(r.market.pD * 100)}% and ${esc(r.market.R ?? "Republican")} at ${Math.round((1 - r.market.pD) * 100)}%.</p>` : ""}
       <p class="fine">Win probability = Φ(combined margin ÷ σ) = Φ(${fmt(r.margin)} ÷ ${r.sigma}) = ${fmt(r.pD * 100)}% ${r.challenger === "I" ? "independent" : "Democratic"}.
@@ -559,6 +571,13 @@
     </td></tr>`;
   }
   $("#race-rows").addEventListener("click", (e) => {
+    const star = e.target.closest("[data-follow]");
+    if (star) {
+      const id = star.dataset.follow;
+      following.has(id) ? following.delete(id) : following.add(id);
+      saveFollowing(); updateFollowCount(); renderRaceTable();
+      return;
+    }
     const os = e.target.closest("[data-open-state]");
     if (os) { showTab("map"); go({ level: "state", st: os.dataset.openState }); return; }
     const tr = e.target.closest("tr.race");
@@ -616,28 +635,28 @@ Other       = 0.4 · non-major vote + 0.4%
       <p>Qualification score (0–100) = years in elected office × 3 (max 45) + 12 per prior public office (max 35) + 6 per relevant professional credential such as law, military, medicine, business or education (max 15) + 5 for a party-leadership role. Possible next moves come from rules that look at term limits, age, the office's next election, open seats in the state, how safe the seat is, and the 2026 forecast.</p>
 
       <h2>4. 2026 midterm forecast</h2>
-      <p>Every race combines all available evidence. Each kind of evidence is turned into an estimated Democratic margin with an uncertainty, then they are averaged with <b>inverse-variance weights</b>: more precise evidence counts more.</p>
-<pre class="formula">Fundamentals (σ 6–10)  = partisan baseline (vote history; Cook PVI on 2026 lines for House seats)
-                        + national climate × elasticity
-                        + incumbency (Senate ±2.5, Governor ±3, open House seats −3 for the departing party)
-                        + governor approval vs. partisan expectation (0.5 × gap, max ±12)
-                        + qualifications ((score − 50) × 0.04, max ±2)
-                        + campaign money (2 × ln(D receipts ÷ R receipts), FEC, max ±4)
-                        + state economy (unemployment and GDP growth vs. the nation, max ±2)
-                        + documented personal vote (e.g. Collins, Osborn)
-Head-to-head polls (σ = 2.5 + 5 ÷ √polls)       — independent polls only, sponsored polls excluded
-Expert ratings     (σ 6; 10 if every rater says Safe) — average of up to 10 forecasters:
+      <p class="callout"><b>No polls are used in the forecast.</b> Head-to-head race polls, the generic congressional ballot and approval ratings are all left out. Each race is estimated from votes already cast, money, the economy, expert ratings and prediction markets. Ratings and markets are judgments made by others, and some of those forecasters do look at polls.</p>
+      <p>Each kind of evidence becomes an estimated Democratic margin with an uncertainty. They're averaged with <b>inverse-variance weights</b>, so more precise evidence counts more.</p>
+<pre class="formula">Fundamentals (σ 6–7; governors 10)
+  = partisan baseline (vote history; Cook PVI on 2026 House lines)
+  + national climate × elasticity
+  + incumbency (Senate ±2.5, Governor ±3; open House seats −3 for the departing party)
+  + qualifications ((score − 50) × 0.04, max ±2)
+  + campaign money (2 × ln(D receipts ÷ R receipts), FEC, max ±4)
+  + state economy (unemployment and GDP growth vs. the nation, max ±2)
+  + documented personal vote from past elections (e.g. Collins 2020, Osborn 2024)
+Expert ratings     (σ 6; 10 if every rater says Safe): average of up to 10 forecasters
                      Safe/Solid ±15 · Likely ±8 · Lean ±4 · Tilt ±1.5 · Toss-up 0
-Prediction market  (σ 5)  — Kalshi price converted to a margin: Φ⁻¹(price) × 6
+Prediction market  (σ 5): Kalshi price converted to a margin, Φ⁻¹(price) × 6
 
-weight = 1 ÷ σ²   (polls, ratings and markets × 0.6, because they partly react to one another)
-Governor fundamentals use σ 10 (ticket-splitting). If fundamentals sit more than 8 pts from the
-average of the race-specific evidence, their σ is multiplied by (gap ÷ 8).
+weight = 1 ÷ σ²   (ratings and markets × 0.6, because they partly react to each other)
+If fundamentals sit more than 8 pts from the ratings/markets average, their σ is multiplied by (gap ÷ 8).
 combined margin = Σ weight × margin ÷ Σ weight      combined σ = max(1 ÷ √Σ weight, 3.5)
 P(win) = Φ(combined margin ÷ combined σ)</pre>
-      <p><b>National climate</b> = 50% generic ballot (${gbLabel(POLLING.national.genericBallot.value)}) + 25% presidential approval (${POLLING.national.presidentApproval.value}% → 0.7 × (50 − approval), the relationship seen in the 2006, 2010, 2018 and 2022 midterms) + 25% special-election swing (D+${POLLING.specialElections?.value ?? "—"} vs. 2024, discounted to 60% because special-election electorates exaggerate swings) = <b>${gbLabel(M.climateParts().value)}</b>.</p>
-      <p><b>Who is running:</b> Ballotpedia's list of members not seeking re-election marks open seats in both chambers. Nominees are named from published polls, prediction markets, and each party's leading fundraiser in FEC filings.</p>
-      <p>Chamber control comes from 20,000 simulated elections. Each one draws a single shared national error (σ 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties. The generic-ballot slider on the forecast tab changes the climate input and re-runs every race.</p>
+      <p><b>National climate</b> uses actual votes, not polls. Across the 2025–26 special elections, Democrats ran ${POLLING.specialElections?.value ?? "—"} points ahead of each district's 2024 presidential result. That swing is discounted to 60%, because special-election turnout exaggerates swings (the 2017–18 specials versus the 2018 result), and starts from the 2024 national margin of R+1.5. Result: <b>${gbLabel(M.climateParts().value)}</b>. Move the slider on the forecast tab to try your own value.</p>
+      <p><b>Who is running:</b> Ballotpedia's list of members not seeking re-election marks open seats. Nominees come from prediction markets and each party's leading fundraiser in FEC filings.</p>
+      <p><b>Following races:</b> tap ☆ on any race to follow it. The <b>Following</b> filter then shows only your races. The list is saved on your device.</p>
+      <p>Chamber control comes from 20,000 simulated elections. Each simulation draws one shared national error (σ 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties.</p>
 
       <h2>5. Sources &amp; neutrality</h2>
       <p>Approval ratings, national polling and race polls come from published polls collected from news coverage on ${esc(POLLING.asOf)}. Each number lists its pollster, field date and a link. These rules keep the inputs as neutral as possible:</p>
@@ -646,8 +665,8 @@ P(win) = Φ(combined margin ÷ combined σ)</pre>
         <li><b>Sponsored polls are excluded from averages.</b> Polls paid for by a campaign, party or advocacy group are shown with their sponsor but don't count, whichever side paid for them.</li>
         <li><b>Simple averages.</b> No pollster grades or "house effect" corrections, so anyone can reproduce the number.</li>
         <li><b>Neutral imputation.</b> A governor with no qualifying poll gets the median of all sourced governors (${fmt(M.approvalMedian)}%), not a guess in either direction.</li>
-        <li><b>Several aggregators for national numbers.</b> President approval (${fmt(POLLING.national.presidentApproval.value)}%) and the generic ballot (D+${fmt(POLLING.national.genericBallot.value)}) average aggregators with differently leaning audiences: ${POLLING.national.genericBallot.polls.map((x) => esc(x.pollster)).join(", ")}.</li>
-        <li><b>No single source decides a race.</b> Polls, expert ratings (from forecasters with a range of perspectives), prediction markets, fundraising, the economy and vote history are combined by precision weighting, so one outlier can't swing a race.</li>
+        <li><b>Polls are shown for reference only.</b> The approval ratings below feed the government rubric's public-opinion score. They are not used in the election forecast.</li>
+        <li><b>No single source decides a race.</b> Expert ratings (from forecasters with a range of perspectives), prediction markets, fundraising, the economy and vote history are combined by precision weighting, so one outlier can't swing a race.</li>
       </ol>
       <div class="table-wrap"><table class="method-table">
         <thead><tr><th>State</th><th>Governor</th><th class="num">Approval used</th><th>Basis</th></tr></thead>
