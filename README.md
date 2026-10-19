@@ -85,18 +85,19 @@ The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simul
 
 The Methodology tab shows every governor's approval with its sources. Each race in the Midterm tab lists the polls behind it.
 
-## How the forecast combines evidence
+## How the forecast combines evidence (no polls)
 
-Each race turns every available kind of evidence into an estimated margin with an uncertainty, then weights them by precision (1 ÷ σ²):
+The forecast uses **no polls**: no head-to-head race polls, generic ballot or approval ratings. Each race turns the remaining evidence into an estimated margin with an uncertainty and weights them by precision (1 ÷ σ²):
 
 | Evidence | Source | Uncertainty |
 | --- | --- | --- |
-| Fundamentals: vote history, Cook PVI on 2026 lines, national climate, incumbency, approval, qualifications, FEC fundraising, state economy | Election results, Census/BLS/BEA, FEC, polls | σ 6–7 (governors 10) |
-| Head-to-head polls (independent only) | `data/polling.js` | σ 2.5 + 5 ÷ √polls |
+| Fundamentals: vote history, Cook PVI on 2026 lines, national climate, incumbency, qualifications, FEC fundraising, state economy, documented personal vote | Election results, Census/BLS/BEA, FEC | σ 6–7 (governors 10) |
 | Expert ratings: Cook, Inside Elections, Sabato, DDHQ, Economist, Fox, RCP, Silver Bulletin and others | Wikipedia's rating tables | σ 6 |
 | Prediction markets | Kalshi | σ 5 |
 
-Polls, ratings and markets get a 0.6 discount because they partly react to one another. When the fundamentals are more than 8 points from the race-specific evidence, their weight shrinks. The national climate averages the generic ballot (50%), presidential approval (25%) and the 2025–26 special-election swing (25%). Open seats come from Ballotpedia's list of members not running. `scripts/fetch-signals.mjs` collects the ratings, markets, FEC money and the not-running list, and runs with every 30-minute refresh.
+The **national climate** comes from actual votes: the 2025–26 special-election swing over the 2024 baseline, discounted to 60%. The forecast tab's slider can override it. Ratings and markets get a 0.6 correlation discount, and fundamentals far from them are down-weighted. Approval polls in `data/polling.js` are used only for the rubric's public-opinion score.
+
+**Following races:** tap ☆ next to any race, then the **Following** filter shows only your races. The list is saved on the device.
 
 ## Data sources
 

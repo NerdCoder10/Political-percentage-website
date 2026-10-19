@@ -280,3 +280,19 @@ table.signals { font-size: 13px; }
 table.signals td, table.signals th { padding: 6px 10px; }
 table.signals tr.total td { font-weight: 700; border-top: 2px solid var(--line); }
 table.signals .num { text-align: right; font-variant-numeric: tabular-nums; }
+.race-cell { display: flex; gap: 8px; align-items: flex-start; }
+.star { flex: none; border: 0; background: transparent; font-size: 20px; line-height: 1; padding: 0 2px; cursor: pointer; color: var(--muted); }
+.star[aria-pressed="true"] { color: #e0a100; }
+.star:focus-visible { outline: 2px solid var(--accent); border-radius: 4px; }
+td.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
+.seg button { white-space: nowrap; }
+#office-filter { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+@media (max-width: 560px) {
+  /* Phones: race, rating and probability only; the incumbent and seat status show in the race details. */
+  table.races th:nth-child(2), table.races td:nth-child(2),
+  table.races th:nth-child(3), table.races td:nth-child(3) { display: none; }
+  table.races tr.detail td { display: table-cell; }
+  .prob-col { min-width: 130px; }
+  .prob { grid-template-columns: 34px 1fr 34px; font-size: 12px; }
+  .controls-row.filters select, .controls-row.filters input[type="search"] { flex: 1 1 140px; min-width: 0; }
+}

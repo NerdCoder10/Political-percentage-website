@@ -43,22 +43,19 @@
     }
   }
 
-  // National climate: one number built from three independent measures (points, D minus R).
-  //   generic ballot (50%)  — multi-aggregator average of the congressional ballot question
-  //   presidential approval (25%) — in past midterms the president's party ran about 0.7 pts
-  //                           behind per point of approval below 50 (2006, 2010, 2018, 2022)
-  //   special elections (25%) — 2025–26 swing vs. the 2024 presidential margin, discounted to 60%
-  //                           because special-election electorates exaggerate swings (2017–18 ratio)
-  M.climateParts = (genericBallot) => {
-    const gb = genericBallot ?? P?.national.genericBallot.value ?? G.NATIONAL_OPINION.genericBallot;
-    const approval = P?.national.presidentApproval.value ?? G.NATIONAL_OPINION.presidentApproval;
-    const parts = [{ key: "generic", label: "Generic congressional ballot", value: gb, weight: 0.5 },
-      { key: "approval", label: `Presidential approval (${approval}%) → 0.7 × (50 − approval)`, value: Math.round(0.7 * (50 - approval) * 10) / 10, weight: 0.25 }];
-    if (P?.specialElections) parts.push({ key: "specials", label: `Special-election swing (D+${P.specialElections.value} vs. 2024) × 0.6 − 1.5`, value: Math.round((0.6 * P.specialElections.value - 1.5) * 10) / 10, weight: 0.25 });
-    const wsum = parts.reduce((a, x) => a + x.weight, 0);
-    return { parts, value: Math.round((parts.reduce((a, x) => a + x.value * x.weight, 0) / wsum) * 10) / 10 };
+  // National climate (points, D minus R) — built WITHOUT polls, from votes actually cast:
+  // the 2025–26 special-election swing against the 2024 presidential margin, discounted to 60%
+  // because special-election electorates exaggerate swings (the 2017–18 specials vs. the 2018 result),
+  // starting from the 2024 national presidential margin (R+1.5). The forecast slider can override it.
+  M.climateParts = (override) => {
+    const swing = P?.specialElections?.value ?? 0;
+    const fromSpecials = Math.round((0.6 * swing - 1.5) * 10) / 10;
+    if (override != null && override !== fromSpecials) {
+      return { parts: [{ key: "manual", label: "Set with the slider", value: override, weight: 1 }], value: override, manual: true };
+    }
+    return { parts: [{ key: "specials", label: `2025–26 special elections: Democrats ran ${swing} pts ahead of the 2024 baseline × 0.6, from R+1.5`, value: fromSpecials, weight: 1 }], value: fromSpecials };
   };
-  if (P) G.NATIONAL_OPINION.climate = M.climateParts().value;
+  G.NATIONAL_OPINION.climate = M.climateParts().value;
 
   // Official statistics (data/generated/indicators.js, built by scripts/fetch-indicators.mjs)
   // replace the curated approximations wherever an agency published a value.
@@ -430,22 +427,16 @@
   // For each race, an expected Democratic margin (points) is built from:
   //   baseline     partisan lean of the jurisdiction (Senate/Governor: state lean with neutral
   //                climate; House: 2024 House result blended with the state vote)
-  //   climate      (generic ballot − 2024 House popular vote) × elasticity
+  //   climate      (special-election climate − 2024 House popular vote) × elasticity
   //   incumbency   +2.5 Senate / +3 Governor for a running incumbent; House baselines already
   //                include it, so open House seats subtract 3 from the departing party
-  //   approval     running governors: 0.5 × (approval − partisan expectation), capped at ±12,
-  //                where partisan expectation = 50 + half the party's lead in the state (sourced
-  //                approval averages from data/polling.js);
-  //                departing governors: (approval − 50) × 0.1 for their party
+  //   (no polls: head-to-head polls, the generic ballot and approval ratings are not used)
   //   personal     documented personal vote of specific candidates (e.g. Collins, Osborn)
-  //   polling      when head-to-head polls exist, final margin = w × poll average + (1 − w) ×
-  //                fundamentals, w = 0.35 + 0.1 per poll (an aggregator average counts as 3),
-  //                capped at 0.7; σ shrinks by up to 25% as polling weight grows
   //   quality      (qualification score − 50) × 0.04 toward a running incumbent (max ±2)
   //   money        2 × ln(D ÷ R campaign receipts, FEC), max ±4
   //   economy      state unemployment and GDP growth vs. the nation (see M.economyEffect)
-  // These "fundamentals" are then combined with every other available signal — head-to-head
-  // polls, expert ratings, prediction markets — by inverse-variance weighting (see addRace).
+  // These "fundamentals" are then combined with expert ratings and prediction markets by
+  // inverse-variance weighting (see addRace). Polls are not used.
   // Win probability = Φ(margin / σ) with σ = 6 (Senate), 6.5 (House, +3 where maps were redrawn
   // for 2026), 7 (Governor). Chamber control comes from 20,000 simulations that share a national
   // polling error (σ = 2.5) across all races.
@@ -512,8 +503,7 @@
   };
 
   M.forecast = (opts = {}) => {
-    const gb = opts.genericBallot ?? G.NATIONAL_OPINION.genericBallot;
-    const climate = M.climateParts(gb);
+    const climate = M.climateParts(opts.climate);
     const swing = climate.value - M.houseNationalMargin24;
     const races = [];
     const addRace = (r) => {
@@ -521,13 +511,6 @@
       r.climate = round1(swing * el);
       r.personal ??= 0;
       let margin = r.baseline + r.climate + r.incumbency + r.qualityEffect + r.personal;
-      if (r.approvalWeight) {
-        // Approval relative to what partisanship alone predicts (50% + half the party's lead):
-        // each point above/below that moves the margin half a point, capped at ±12.
-        const dir = r.incumbent.party === "D" ? 1 : -1;
-        const expected = 50 + (dir * r.baseline) / 2;
-        r.approvalEffect = round1(dir * clamp(0.5 * (r.approval - expected), -12, 12));
-      }
       r.moneyEffect ??= 0;
       r.economyEffect ??= 0;
       r.fundamentals = round1(margin + r.approvalEffect + r.moneyEffect + r.economyEffect);
@@ -538,15 +521,12 @@
       // Governor races split from federal partisanship far more often (Scott, Ayotte, Beshear),
       // so their fundamentals carry more uncertainty.
       const fundSigma = r.office === "governor" ? 10 : r.sigma;
-      const signals = [{ key: "fundamentals", label: "Fundamentals (vote history, climate, incumbency, approval, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
+      const signals = [{ key: "fundamentals", label: "Fundamentals (vote history, special-election climate, incumbency, qualifications, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
+      // Head-to-head polls are deliberately NOT used (owner's choice): the forecast relies on votes
+      // already cast, money, the economy, expert ratings and prediction markets.
       const pr = P?.races[r.id];
-      const pm = pr ? pr.polls.map(M.pollMargin).filter((v) => v != null) : [];
-      if (pm.length) {
-        const n = pr.polls.reduce((k, x) => k + (/average/i.test(x.pollster) ? 3 : M.pollMargin(x) != null ? 1 : 0), 0);
-        r.poll = { ...pr, margin: round1(mean(pm)), count: n };
-        signals.push({ key: "polls", label: `Head-to-head polls (${pr.polls.length} source${pr.polls.length > 1 ? "s" : ""})`, margin: r.poll.margin, sigma: round1(2.5 + 5 / Math.sqrt(n)), discount: 0.6 });
-        if (pr.challenger) r.challenger = pr.challenger;
-      }
+      if (pr?.challenger) r.challenger = pr.challenger;
+      if (pr) r.nominees = { D: pr.D, R: pr.R };
       const rt = SIG().ratings[r.id] ?? (r.office === "senate" ? SIG().ratings[r.id.replace(/-S$/, "")] : null);
       if (rt) {
         r.ratings = rt;
@@ -560,10 +540,10 @@
       }
       // Robustness: when race-specific evidence (polls, ratings, markets) agrees and the fundamentals
       // sit more than 8 points away from its average, widen the fundamentals' σ in proportion.
-      if (signals.length >= 3) {
+      if (signals.length >= 2) {
         const others = signals.slice(1);
         const gap = Math.abs(r.fundamentals - mean(others.map((x) => x.margin)));
-        if (gap > 8) { signals[0].sigma = round1(signals[0].sigma * (gap / 8)); signals[0].label += ` — down-weighted, ${round1(gap)} pts from the race-specific evidence`; }
+        if (gap > 8) { signals[0].sigma = round1(signals[0].sigma * (gap / 8)); signals[0].label += ` — down-weighted, ${round1(gap)} pts from the ratings and markets`; }
       }
       let wsum = 0, msum = 0;
       for (const sg of signals) { sg.w = (sg.discount ?? 1) / sg.sigma ** 2; wsum += sg.w; msum += sg.w * sg.margin; }
@@ -616,8 +596,7 @@
         baseline,
         incumbency: running ? dir * INCUMBENCY.governor : 0,
         // An unpopular departing governor still drags on their party a little (and vice-versa).
-        approvalEffect: running ? 0 : round1(dir * (g.approval - 50) * 0.1),
-        approvalWeight: running ? 1 : 0, approval: g.approval,
+        approvalEffect: 0, // approval ratings come from polls, which the forecast does not use
         qualityEffect: running ? round1(dir * clamp((q.score - 50) * 0.04, -2, 2)) : 0,
         economyEffect: M.economyEffect(st, "governor", g.party),
         sigma: SIGMA.governor,
@@ -675,7 +654,7 @@
       });
     }
 
-    return { genericBallot: gb, climate, swing: round1(swing), races, control: M.simulate(races) };
+    return { climate, swing: round1(swing), races, control: M.simulate(races) };
   };
 
   // Seeded RNG so the numbers are stable between page loads.
