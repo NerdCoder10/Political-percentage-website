@@ -434,13 +434,17 @@
     $("#view-map").hidden = tab !== "map";
     $("#view-midterms").hidden = tab !== "midterms";
     $("#view-method").hidden = tab !== "method";
+    $("#view-stats").hidden = tab !== "stats";
     if (tab === "midterms") renderMidterms();
     if (tab === "method" && !$("#method").innerHTML) renderMethod();
+    if (tab === "stats") requestAnimationFrame(() => globalThis.renderStats?.($("#stats")));
     if (tab === "map") requestAnimationFrame(() => go(view, { animate: false, push: false }));
     currentTab = tab;
     setHash();
   }
   let currentTab = "map";
+  // Used by the Stats tab to jump to a state on the map.
+  globalThis.openState = (st) => { showTab("map"); go({ level: "state", st }); };
   document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
   function setHash() {
     const h = currentTab !== "map" ? currentTab
@@ -450,7 +454,7 @@
   }
   function fromHash() {
     const [kind, arg] = decodeURIComponent(location.hash.slice(1)).split("/");
-    if (kind === "midterms" || kind === "method") { go({ level: "nation" }, { animate: false, push: false }); showTab(kind); return; }
+    if (kind === "midterms" || kind === "method" || kind === "stats") { go({ level: "nation" }, { animate: false, push: false }); showTab(kind); return; }
     if (kind === "state" && M.states[arg]) return go({ level: "state", st: arg }, { animate: false });
     if (kind === "county" && ELECTIONS.counties[arg]) return go({ level: "county", st: ELECTIONS.counties[arg].st, fips: arg }, { animate: false });
     if (kind === "city") { const c = CITIES.find((x) => `${x[0]}|${x[1]}` === arg); if (c) return go({ level: "city", st: c[1], fips: c[5], city: c.idx }, { animate: false }); }

@@ -204,6 +204,12 @@ const payload = {
   ratings, markets, money, notRunning,
 };
 const previous = fs.existsSync(file) ? (await import(`${pathToFileURL(file).href}?t=${Date.now()}`), globalThis.RACE_SIGNALS) : null;
+// A source that failed or came back nearly empty this run keeps its previous data.
+for (const key of ["ratings", "markets", "money"]) {
+  const before = Object.keys(previous?.[key] ?? {}).length, now = Object.keys(payload[key]).length;
+  if (before && now < before * 0.5) { payload[key] = previous[key]; console.log(`${key}: only ${now} this run (had ${before}); kept previous`); }
+}
+if (previous && !Object.keys(payload.notRunning.house).length) payload.notRunning = previous.notRunning;
 const { fetched: _ignored, ...prevBody } = previous ?? {};
 if (previous && JSON.stringify(prevBody) === JSON.stringify(payload)) console.log("signals unchanged");
 else {

@@ -154,9 +154,11 @@ step("lifeexp", () => {
   const v = {};
   for (const r of d) { const st = byName[r.area.toUpperCase()]; if (st) v[st] = num(r.leb); }
   // The state file has no national row; NCHS Data Brief 456 reports 76.4 years for 2021.
-  const brief = download("cdc-db456.htm", "https://www.cdc.gov/nchs/products/databriefs/db456.htm").replace(/<[^>]+>/g, "");
-  const us = brief.match(/In 2021, life expectancy at birth was (\d+\.\d) years for the total U/);
-  if (us) v.US = num(us[1]);
+  try {
+    const brief = download("cdc-db456.htm", "https://www.cdc.gov/nchs/products/databriefs/db456.htm").replace(/<[^>]+>/g, "");
+    const us = brief.match(/In 2021, life expectancy at birth was (\d+\.\d) years for the total U/);
+    if (us) v.US = num(us[1]);
+  } catch { v.US = 76.4; /* NCHS Data Brief 456 (2021); used when the page can't be fetched */ }
   put("lifeexp", { source: "CDC/NCHS, U.S. State Life Expectancy by Sex, 2021 (latest machine-readable release); U.S. from NCHS Data Brief 456", url: "https://data.cdc.gov/d/it4f-frdc", vintage: "2021", what: "Life expectancy at birth" }, v);
 });
 step("overdose", () => {
@@ -236,6 +238,12 @@ step("renew", () => {
 // refresh produces a commit only when an agency publishes new numbers.
 const file = path.join(ROOT, "data/generated/indicators.js");
 const previous = fs.existsSync(file) ? (await import(`${pathToFileURL(file).href}?t=${Date.now()}`), globalThis.OFFICIAL_INDICATORS) : null;
+// A source that failed this run (blocked, down, rate-limited) keeps its last good official values
+// rather than silently dropping back to the curated approximations.
+for (const [key, ind] of Object.entries(previous?.indicators ?? {})) {
+  if (!out[key]) { out[key] = { ...ind, carriedOver: ind.carriedOver ?? previous.fetched }; console.log(`${key.padEnd(10)} kept previous values (fetched ${out[key].carriedOver})`); }
+  else if (Object.keys(out[key].values).length < Object.keys(ind.values).length * 0.8) { out[key] = { ...ind, carriedOver: ind.carriedOver ?? previous.fetched }; console.log(`${key.padEnd(10)} incomplete this run; kept previous values`); }
+}
 if (previous && JSON.stringify(previous.indicators) === JSON.stringify(out)) {
   console.log(`no changes since ${previous.fetched}; ${path.relative(ROOT, file)} left as is`);
 } else {
