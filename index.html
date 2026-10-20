@@ -25,6 +25,7 @@
       <button role="tab" id="tab-map" aria-controls="view-map" aria-selected="true" data-tab="map"><span class="tab-long">Map &amp; Leaders</span><span class="tab-short">Map</span></button>
       <button role="tab" id="tab-midterms" aria-controls="view-midterms" aria-selected="false" data-tab="midterms"><span class="tab-long">2026 Midterm Forecast</span><span class="tab-short">Midterms</span></button>
       <button role="tab" id="tab-method" aria-controls="view-method" aria-selected="false" data-tab="method"><span class="tab-long">Rubric &amp; Methodology</span><span class="tab-short">Rubric</span></button>
+      <button role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false" data-tab="stats"><span class="tab-long">Statistics &amp; Sources</span><span class="tab-short">Stats</span></button>
     </nav>
     <button id="install-btn" class="install-btn" hidden>Install app</button>
   </header>
@@ -103,6 +104,11 @@
   </main>
 
   <!-- TAB 3: methodology -->
+  <!-- TAB 4: statistics behind the rubric -->
+  <main id="view-stats" class="view page" role="tabpanel" aria-labelledby="tab-stats" hidden>
+    <div class="page-inner" id="stats"></div>
+  </main>
+
   <main id="view-method" class="view page" role="tabpanel" aria-labelledby="tab-method" hidden>
     <div class="page-inner" id="method"></div>
   </main>
@@ -123,6 +129,7 @@
   <script src="data/generated/version.js"></script>
   <script src="js/model.js"></script>
   <script src="js/app.js"></script>
+  <script src="js/stats.js"></script>
   <script src="js/refresh.js"></script>
   <script src="js/pwa.js"></script>
 </body>

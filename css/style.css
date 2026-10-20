@@ -296,3 +296,41 @@ td.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
   .prob { grid-template-columns: 34px 1fr 34px; font-size: 12px; }
   .controls-row.filters select, .controls-row.filters input[type="search"] { flex: 1 1 140px; min-width: 0; }
 }
+
+/* ---------- Stats tab ---------- */
+:root { --chart: #2f7d78; --chart-strong: var(--text); --grid: #e3e8ee; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --chart: #55b8b0; --grid: #26313d; } }
+:root[data-theme="dark"] { --chart: #55b8b0; --grid: #26313d; }
+.stat-pick { display: grid; gap: 4px; font-size: 13px; color: var(--muted); font-weight: 600; flex: 1 1 260px; }
+.stat-pick select { box-shadow: none; font-size: 15px; color: var(--text); }
+.stat-card { margin-bottom: 12px; }
+.stat-card-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px 24px; }
+.stat-card .label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.stat-title { font-size: 20px; font-weight: 800; letter-spacing: -0.01em; margin: 2px 0 4px; }
+.stat-card .sub { font-size: 13px; color: var(--muted); }
+.stat-card a, .source-list a, .stat-table a { color: var(--text); }
+.stat-figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 8px 8px; }
+.stat-figure figcaption { padding: 4px 8px 2px; }
+.stat-chart svg { display: block; font-variant-numeric: tabular-nums; }
+.stat-chart .grid { stroke: var(--grid); stroke-width: 1; }
+.stat-chart .axis-label, .stat-chart .goal-label { font-size: 11px; fill: var(--muted); }
+.stat-chart .goal-label { font-weight: 700; }
+.stat-chart .goalpost { stroke: var(--muted); stroke-width: 1; stroke-dasharray: 4 4; opacity: .7; }
+.stat-chart .guide { stroke: var(--grid); stroke-width: 2; }
+.stat-chart .dot { fill: var(--chart); stroke: var(--surface); stroke-width: 2; }
+.stat-chart .row-label { font-size: 12px; fill: var(--text); }
+.stat-chart .row-value { font-size: 12px; fill: var(--muted); }
+.stat-chart .row.us .dot { fill: var(--chart-strong); }
+.stat-chart .row.us .row-label, .stat-chart .row.us .row-value { font-weight: 800; fill: var(--text); }
+.stat-chart .hit { fill: transparent; cursor: pointer; }
+.stat-chart .row:hover .hit { fill: var(--surface-2); }
+.stat-chart .row:hover .dot { r: 7; }
+.stat-table-wrap { max-height: 70vh; overflow: auto; }
+.stat-table th { position: sticky; top: 0; background: var(--surface); z-index: 1; white-space: normal; min-width: 92px; vertical-align: bottom; }
+.stat-table .sticky { position: sticky; left: 0; background: var(--surface); z-index: 2; min-width: 130px; }
+.stat-table th.sticky { z-index: 3; }
+.stat-table td { white-space: nowrap; }
+.src-ref { font-weight: 400; color: var(--muted) !important; text-decoration: none; font-size: 11px; }
+.source-list { padding-left: 22px; font-size: 13.5px; }
+.source-list li { margin: 4px 0; }
+.source-list li:target { background: var(--surface-2); border-radius: 6px; }

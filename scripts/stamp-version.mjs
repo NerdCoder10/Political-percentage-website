@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 // App code is included so an installed app also updates itself after code changes.
-const FILES = ["index.html", "manifest.webmanifest", "sw.js", "css/style.css", "js/app.js", "js/model.js", "js/pwa.js", "js/refresh.js",
+const FILES = ["index.html", "manifest.webmanifest", "sw.js", "css/style.css", "js/app.js", "js/stats.js", "js/model.js", "js/pwa.js", "js/refresh.js",
   "data/states-meta.js", "data/leaders.js", "data/state-indicators.js", "data/polling.js",
   ...fs.readdirSync(path.join(ROOT, "data/generated")).filter((f) => f.endsWith(".js") && f !== "version.js").sort().map((f) => `data/generated/${f}`)];
 const hash = crypto.createHash("sha256");

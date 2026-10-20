@@ -21,6 +21,13 @@ The site is an installable web app: it has a manifest, home-screen icons, offlin
 
 The installed app opens full-screen from its icon, works offline with the last data it saw, and picks up new data automatically.
 
+## Statistics & Sources tab
+
+The **Stats** tab shows every statistic behind the 1,000-point rubric.
+- Pick a measure to see a ranked dot plot of all 50 states with the national figure. Dashed lines mark the scoring goalposts, and hovering or tapping a state shows its points.
+- A card names the source agency, dataset, data year and link.
+- A full table lists every measure for every state, ranked by total score. Each column is footnoted to a numbered source list, followed by the other datasets the app uses.
+
 ## Run it
 
 ```bash
