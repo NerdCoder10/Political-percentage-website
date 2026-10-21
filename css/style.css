@@ -424,3 +424,9 @@ table.signals tr.sub td:first-child { padding-left: 22px; color: var(--muted); }
 .mayor[data-party="I"] .mayor-ring { stroke: var(--ind); }
 .mayor image { pointer-events: all; }
 .mayor-ring { fill: var(--surface); fill-opacity: .001; }
+
+/* ---------- Zoom to a city ---------- */
+.city-zoom { display: inline-flex; align-items: center; gap: 6px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 3px 4px 3px 10px; box-shadow: var(--shadow); max-width: 100%; }
+.city-zoom[hidden] { display: none; }
+.city-zoom select { border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 600; padding: 5px 4px; max-width: min(320px, 70vw); cursor: pointer; }
+.city-zoom-icon { font-size: 14px; }

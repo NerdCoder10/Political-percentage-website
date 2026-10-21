@@ -146,7 +146,8 @@
       .attr("class", "city-label").classed("has-mayor", (c) => !!mayorOf(c))
       .attr("x", (c) => c.xy[0]).attr("y", (c) => c.xy[1])
       // At state level the photo identifies the mayor; zoomed into a county or city there is room for the name.
-      .text((c) => (mayorOf(c) && view.level !== "state" ? `${c[0]} · Mayor ${mayorOf(c).name}` : c[0]));
+      .text((c) => (mayorOf(c) && view.level !== "state" ? `${c[0]} · Mayor ${mayorOf(c).name}`
+        : view.level === "city" && c.idx === view.city ? `${c[0]} · No mayor there` : c[0]));
     // Mayor photos (or a party-colored ring when there is no photo) on cities with a mayor on file.
     gMayors.selectAll("g.mayor").data(list.filter((c) => mayorOf(c)), (c) => c.idx).join((enter) => {
       const g = enter.append("g").attr("class", "mayor");
@@ -180,7 +181,12 @@
     if (view.level === "nation") fit([[0, 0], [975, 610]], 0.96, animate);
     else if (view.level === "state") fit(path.bounds(stateFeatures.find((f) => M.stateByFips[f.id] === view.st)), 0.9, animate);
     else if (view.level === "county") fit(path.bounds(countyFeatures.find((f) => f.id === view.fips)), 0.5, animate);
-    else if (view.level === "city") fit(path.bounds(countyFeatures.find((f) => f.id === view.fips)), 0.7, animate);
+    else if (view.level === "city") {
+      // City level: a box around the city itself, sized by population (not the whole county).
+      const c = CITIES[view.city], d = 4 + Math.sqrt(c[2]) / 90;
+      if (c.xy) fit([[c.xy[0] - d, c.xy[1] - d], [c.xy[0] + d, c.xy[1] + d]], 0.8, animate);
+      else fit(path.bounds(countyFeatures.find((f) => f.id === view.fips)), 0.7, animate);
+    }
     if (push) setHash();
   }
 
@@ -190,7 +196,27 @@
     if (view.fips && (view.level === "county" || view.level === "city")) parts.push(`<button data-nav="county:${view.fips}">${esc(ELECTIONS.counties[view.fips].n)}</button>`);
     if (view.level === "city") parts.push(`<button data-nav="city:${view.city}">${esc(CITIES[view.city][0])}</button>`);
     $("#crumbs").innerHTML = parts.join('<span class="sep">›</span>');
+    renderCityZoom();
   }
+
+  // "Zoom to a city": inside a state, county or city, jump one level further in to a city and its mayor.
+  function renderCityZoom() {
+    const box = $("#city-zoom");
+    if (!view.st) { box.hidden = true; return; }
+    const inCounty = view.level === "county" || view.level === "city";
+    let list = (inCounty ? citiesByCounty.get(view.fips) : citiesByState.get(view.st)) ?? [];
+    if (inCounty && list.length < 2) list = citiesByState.get(view.st) ?? []; // a county with one city: offer the state's
+    list = [...list].sort((a, b) => b[2] - a[2]);
+    box.hidden = !list.length;
+    const label = (c) => { const m = mayorOf(c); return `${c[0]} — ${m ? `Mayor ${m.name} (${m.party})` : "no mayor listed"}`; };
+    $("#city-zoom-select").innerHTML = `<option value="">Zoom to a city${inCounty && view.level !== "city" ? " in this county" : ""}…</option>`
+      + list.map((c) => `<option value="${c.idx}" ${c.idx === view.city ? "selected" : ""}>${esc(label(c))}</option>`).join("");
+  }
+  $("#city-zoom-select").addEventListener("change", (e) => {
+    if (e.target.value === "") return;
+    const c = CITIES[+e.target.value];
+    go({ level: "city", st: c[1], fips: c[5], city: c.idx });
+  });
 
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-nav]");
@@ -471,7 +497,7 @@
       ${leanBlock(l, note)}
       <section><h3>City leadership</h3>
         ${mayor ? leaderCard(withState(mayor, st), `Mayor of ${name}`, "mayor", { open: true })
-          : `<div class="note">The mayor of ${esc(name)} is not in the curated dataset yet; it covers about 85 of the largest cities. Most U.S. cities use a mayor–council or council–manager government.</div>`}
+          : `<div class="note"><b>No mayor there.</b> ${esc(name)} has no mayor in this app's list, which covers about 85 of the largest cities.</div>`}
       </section>
       <section><h3>County</h3>
         <ul class="link-list"><li><button data-nav="county:${fips}">${esc(county.n)}</button>${miniLean(countyLean[fips])}</li></ul>
