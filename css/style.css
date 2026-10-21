@@ -10,6 +10,7 @@
   --dem: #2563b8;
   --ind: #7d5bc0;
   --oth: #8d96a3;
+  --tossup: #a7adb6;
   --rep-soft: #f6dcdd;
   --dem-soft: #dbe6f6;
   --map-stroke: #ffffff;
@@ -25,13 +26,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f141b; --surface: #18202a; --surface-2: #1f2934; --text: #e7edf4; --muted: #9aa7b6; --line: #2c3845;
-    --accent: #c4cfdb; --rep: #e2545b; --dem: #4f8be0; --ind: #a586e6; --oth: #7d8794; --rep-soft: #3a2124; --dem-soft: #1c2c45;
+    --accent: #c4cfdb; --rep: #e2545b; --dem: #4f8be0; --ind: #a586e6; --oth: #7d8794; --tossup: #6b7280; --rep-soft: #3a2124; --dem-soft: #1c2c45;
     --map-stroke: #0f141b; --map-empty: #2a3440; --shadow: 0 8px 28px rgba(0, 0, 0, 0.45); color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f141b; --surface: #18202a; --surface-2: #1f2934; --text: #e7edf4; --muted: #9aa7b6; --line: #2c3845;
-  --accent: #c4cfdb; --rep: #e2545b; --dem: #4f8be0; --ind: #a586e6; --oth: #7d8794; --rep-soft: #3a2124; --dem-soft: #1c2c45;
+  --accent: #c4cfdb; --rep: #e2545b; --dem: #4f8be0; --ind: #a586e6; --oth: #7d8794; --tossup: #6b7280; --rep-soft: #3a2124; --dem-soft: #1c2c45;
   --map-stroke: #0f141b; --map-empty: #2a3440; --shadow: 0 8px 28px rgba(0, 0, 0, 0.45); color-scheme: dark;
 }
 
@@ -114,7 +115,8 @@ h1, h2, h3, h4 { line-height: 1.25; margin: 0; }
 .legend {
   position: absolute; left: 12px; bottom: 12px; background: var(--surface); padding: 8px 12px; border-radius: 10px; box-shadow: var(--shadow); width: 260px; z-index: 4;
 }
-.legend-bar { height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--rep), var(--rep-soft) 48%, var(--dem-soft) 52%, var(--dem)); }
+/* Toss-up band: within 3 points of even (−3…+3 on the −40…+40 scale = 46.25%–53.75%). */
+.legend-bar { height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--rep), var(--rep-soft) 46.25%, var(--tossup) 46.25%, var(--tossup) 53.75%, var(--dem-soft) 53.75%, var(--dem)); }
 .legend-labels { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 2px; }
 .legend-note { font-size: 11.5px; color: var(--muted); }
 
