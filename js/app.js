@@ -207,6 +207,37 @@
   }
 
   const initials = (n) => n.replace(/\b(Jr|Sr|II|III)\.?/g, "").split(/\s+/).filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).slice(0, 2).join("");
+  // A person's photo (official portrait or Wikipedia lead image), or their initials when there is none.
+  function face(p, size = "") {
+    const party = p.party ?? "X";
+    const ph = M.photo(p);
+    if (!ph?.src) return `<span class="avatar ${party} ${size}" aria-hidden="true">${esc(initials(p.name))}</span>`;
+    return `<img class="face ${party} ${size}" src="${esc(ph.src)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-initials="${esc(initials(p.name))}">`;
+  }
+  // A photo that fails to load (offline, removed) falls back to initials.
+  document.addEventListener("error", (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains("face")) return;
+    const span = document.createElement("span");
+    span.className = img.className.replace("face", "avatar");
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = img.dataset.initials;
+    img.replaceWith(span);
+  }, true);
+  const photoCredit = (p) => {
+    const ph = M.photo(p);
+    if (!ph?.src) return "";
+    return ph.src.includes("unitedstates.github.io") ? `<p class="fine">Photo: official congressional portrait (public domain, via <a href="https://github.com/unitedstates/images" target="_blank" rel="noopener">@unitedstates/images</a>).</p>`
+      : `<p class="fine">Photo: <a href="${esc(ph.file)}" target="_blank" rel="noopener">Wikimedia Commons</a> (see the file page for author and license).</p>`;
+  };
+  // Two nominees side by side with their photos.
+  function matchup(r) {
+    const n = r.nominees;
+    if (!n) return "";
+    const dParty = r.challenger === "I" ? "I" : "D";
+    const one = (name, party) => `<div class="nominee">${face({ name, party }, "md")}<div><b>${esc(name.replace(/\s*\(inc\.\)/, ""))}</b><span class="chip ${party}">${party}</span>${/\(inc\.\)/.test(name) || M.personKey(name) === M.personKey(r.incumbent.name) ? `<small>incumbent</small>` : ""}</div></div>`;
+    return `<div class="matchup">${one(n.D, dParty)}<span class="vs">vs.</span>${one(n.R, "R")}</div>`;
+  }
 
   // One line per poll: "Pollster (date): 52% approve / 41% disapprove", linked when a URL exists.
   const pollLine = (x, mode) => {
@@ -233,7 +264,7 @@
     const party = p.party ?? "X";
     return `<article class="leader">
       <div class="leader-top">
-        <div class="avatar ${party}" aria-hidden="true">${esc(initials(p.name))}</div>
+        ${face(p, "lg")}
         <div>
           <div class="leader-name">${esc(p.name)} <span class="chip ${party}">${party === "I" ? "I" : party}</span></div>
           <div class="leader-office">${esc(office)}</div>
@@ -249,6 +280,7 @@
         <h4>Possible next moves</h4>
         <ul>${b.nextMoves.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
         <p class="fine">Score: experience ${b.qual.parts.experience} + prior offices ${b.qual.parts.offices} + background ${b.qual.parts.background}${b.qual.parts.leadership ? ` + leadership ${b.qual.parts.leadership}` : ""}.</p>
+        ${photoCredit(p)}
       </details>
     </article>`;
   }
@@ -462,7 +494,7 @@
     if (!st) {
       el.innerHTML = `<div class="drawer-head"><h2>My state</h2><button class="btn-ghost" data-close-drawer>Close</button></div>
         <label class="stat-pick">Choose your state<select id="delegation-state"><option value="">Select…</option>${opts}</select></label>
-        <p class="hint">Your senators and representatives will stay one tap away on every tab.</p>`;
+        <p class="hint">Your governor, senators and representatives will stay one tap away on every tab.</p>`;
     } else {
       const s = M.states[st];
       const sens = M.senators(st);
@@ -470,12 +502,15 @@
       if (s.seats) for (let d = s.seats === 1 ? 0 : 1; d <= (s.seats === 1 ? 0 : s.seats); d++) reps.push(d);
       const senRace = (m) => raceFor(`SEN-${st}`)?.incumbent.id === m.id ? raceFor(`SEN-${st}`) : raceFor(`SEN-${st}-S`)?.incumbent.id === m.id ? raceFor(`SEN-${st}-S`) : null;
       const person = (m, office, kind, race, extra = "") => m ? `<details class="del-person"><summary>
-          <span class="chip ${m.party}">${m.party}</span><span class="del-name">${esc(m.name)}</span>
+          ${face(m, "sm")}<span class="del-name">${esc(m.name)} <span class="chip ${m.party}">${m.party}</span></span>
           <span class="del-sub">${esc(office)}${race ? ` · ${esc(holdLine(race, m.caucus ?? m.party))}` : extra}</span></summary>
-          ${leaderCard(m, office, kind, { forecast: race, districtMargin: race?.baseline, open: true })}</details>` : "";
+          ${leaderCard(m, office, kind, { forecast: race, districtMargin: race?.baseline, open: true })}${race ? matchup(race) : ""}</details>` : "";
+      const gov = GOVERNORS[st];
+      const govRace = raceFor(`GOV-${st}`);
       el.innerHTML = `<div class="drawer-head"><h2>${esc(s.name)}</h2><button class="btn-ghost" data-close-drawer>Close</button></div>
         <label class="stat-pick">Change state<select id="delegation-state">${opts}</select></label>
         <div class="drawer-actions"><button class="btn-ghost" data-nav="races:${st}">Research ${st} races</button><button class="btn-ghost" data-nav="state:${st}">Open on map</button></div>
+        ${gov ? `<h3>${st === "DC" ? "Mayor" : "Governor"}</h3>${person(withState(gov, st), govTitle(st), "governor", govRace, govRace ? "" : st === "DC" ? "" : " · Not up in 2026")}` : ""}
         ${st === "DC" ? "" : `<h3>U.S. Senators</h3>${sens.map((m) => person(m, `U.S. Senator · Class ${m.cls}`, "senator", senRace(m), ` · Term ends ${m.end.slice(0, 4)}`)).join("")}`}
         <h3>U.S. Representatives${s.seats ? ` · ${s.seats}` : ""}</h3>
         ${reps.map((d) => {
@@ -525,7 +560,7 @@
   globalThis.openState = (st) => { showTab("map"); go({ level: "state", st }); };
   // Shared helpers for the Races tab (js/races.js).
   globalThis.PP = {
-    getForecast: () => forecast, leaderCard, esc, fmt, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
+    getForecast: () => forecast, leaderCard, esc, fmt, evidenceTable, ratingsLine, marketsLine, face, matchup, governorOf: (st) => GOVERNORS[st] && withState(GOVERNORS[st], st), govTitle, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
     getTrackedState: () => trackedState, setTrackedState, openDelegation,
     isFollowing: (id) => following.has(id),
     toggleFollow: (id) => { following.has(id) ? following.delete(id) : following.add(id); saveFollowing(); updateFollowCount(); },
@@ -618,7 +653,8 @@
       const seatText = r.status === "open" ? "Open seat" : r.status === "uncertain" ? "Incumbent (uncertain)" : "Incumbent running";
       const row = `<tr class="race" data-race="${r.id}" aria-expanded="${openRace === r.id}">
         <td><div class="race-cell"><button class="star" data-follow="${r.id}" aria-pressed="${following.has(r.id)}" aria-label="${following.has(r.id) ? "Stop following" : "Follow"} ${esc(r.title)}">${following.has(r.id) ? "★" : "☆"}</button>
-          <div class="race-title">${esc(r.title)}<small>${r.office === "house" ? r.id : r.office[0].toUpperCase() + r.office.slice(1)}${r.redistricted ? " · new 2026 map" : ""}${r.nominees ? ` · ${esc(r.nominees.D)} vs. ${esc(r.nominees.R)}` : r.market?.D && r.market?.R ? ` · ${esc(r.market.D)} vs. ${esc(r.market.R)}` : ""}</small></div></div></td>
+          ${r.nominees ? `<span class="mini-faces">${face({ name: r.nominees.D, party: r.challenger === "I" ? "I" : "D" }, "xs")}${face({ name: r.nominees.R, party: "R" }, "xs")}</span>` : ""}
+          <div class="race-title">${esc(r.title)}<small>${r.office === "house" ? r.id : r.office[0].toUpperCase() + r.office.slice(1)}${r.redistricted ? " · new 2026 map" : ""}${r.nominees ? ` · ${esc(r.nominees.D.replace(/\s*\(inc\.\)/, ""))} vs. ${esc(r.nominees.R.replace(/\s*\(inc\.\)/, ""))}` : ""}</small></div></div></td>
         <td>${esc(r.incumbent.name)} <span class="chip ${r.incumbent.party}">${r.incumbent.party}</span></td>
         <td>${seatText}</td>
         <td><span class="pill ${cls}">${r.rating.label.replace(" D", r.challenger === "I" ? " Ind" : " D")}</span></td>
@@ -628,19 +664,52 @@
     }).join("");
     $("#race-count").textContent = `Showing ${shown.length} of ${list.length} races. Click a race to see how its probability was calculated. Left number = ${officeFilter === "senate" || officeFilter === "all" ? "Democratic (or Democratic-backed independent)" : "Democratic"} win chance, right = Republican.`;
   }
+  // ------------------------------------------------------------------ evidence (shared by the Midterms and Races tabs)
+  const marginText = (v) => `${v > 0 ? "D+" : v < 0 ? "R+" : "±"}${fmt(Math.abs(v))}`;
+  // The three equal source groups, each with its own signals underneath.
+  function evidenceTable(r) {
+    const dLab = r.challenger === "I" ? "Ind." : "D";
+    const rows = r.thirds.map((t) => {
+      const head = `<tr class="group ${t.side}"><th scope="rowgroup">${esc(t.label)}</th><td class="num">${marginText(t.margin)}</td><td class="num">±${fmt(t.sigma)}</td><td class="num">${Math.round(t.weight * 100)}%</td></tr>`;
+      const items = r.signals.filter((sg) => sg.side === t.side).map((sg) => `<tr class="sub"><td>${esc(sg.label)}</td><td class="num">${marginText(sg.margin)}</td><td class="num">±${fmt(sg.sigma)}</td><td class="num">${sg.share}%</td></tr>`).join("");
+      return head + items;
+    }).join("");
+    const missing = ["D", "R"].filter((s) => !r.thirds.some((t) => t.side === s));
+    const note = r.balanced ? "" : missing.length === 2
+      ? `<p class="fine">No partisan-leaning outlet rates this race, so it rests on the independent sources alone.</p>`
+      : `<p class="fine">No ${missing[0] === "D" ? "Democratic" : "Republican"}-leaning outlet rates this race, so the ${missing[0] === "D" ? "Republican" : "Democratic"}-leaning group is set aside (0%) rather than tilting the forecast; the independent sources decide it.</p>`;
+    return `<div class="table-wrap"><table class="signals">
+        <thead><tr><th>Source group / signal</th><th class="num">Estimated margin</th><th class="num">Uncertainty</th><th class="num">Weight</th></tr></thead>
+        <tbody>${rows}
+          <tr class="total"><td>Combined forecast</td><td class="num">${marginText(r.margin)}</td><td class="num">±${r.sigma}</td><td class="num">${fmt(r.pD * 100)}% ${dLab}</td></tr></tbody>
+      </table></div>${note}`;
+  }
+  // Each expert rating, tagged with its source group.
+  function ratingsLine(r) {
+    const SRC = globalThis.RACE_SIGNALS?.sources ?? {};
+    if (!r.ratings) return `<p class="fine">No expert ratings published; forecasters treat this seat as safe.</p>`;
+    const tag = { D: "D-leaning", R: "R-leaning", I: "independent" };
+    return `<p class="fine">Expert ratings (<a href="${esc(SRC.ratings?.url ?? "#")}" target="_blank" rel="noopener">compiled on Wikipedia</a>): ${r.ratings.ratings.map((x) => {
+      const l = M.sourceLean(x.by);
+      return `${esc(l.name)} <b>${esc(x.rating)}</b> <span class="lean-tag ${l.side}">${tag[l.side]}</span>`;
+    }).join(" · ")}</p>`;
+  }
+  function marketsLine(r) {
+    const one = (m, name) => `<a href="${esc(m.url)}" target="_blank" rel="noopener">${name}</a> ${esc(m.D ?? (r.challenger === "I" ? "Independent" : "Democrat"))} ${Math.round(m.pD * 100)}% · ${esc(m.R ?? "Republican")} ${Math.round((1 - m.pD) * 100)}%`;
+    const parts = [r.market && one(r.market, "Kalshi"), r.polymarket && one(r.polymarket, "Polymarket")].filter(Boolean);
+    return parts.length ? `<p class="fine">Prediction markets: ${parts.join("; ")}.</p>` : "";
+  }
+
   function raceDetail(r) {
     const f = (v) => `${v > 0 ? "D+" : v < 0 ? "R+" : "±"}${fmt(Math.abs(v))}`;
     const money = (x) => (x ? `${esc(x.name)} $${(x.receipts / 1e6).toFixed(x.receipts >= 1e6 ? 1 : 2)}M raised` : "—");
     const SRC = globalThis.RACE_SIGNALS?.sources ?? {};
     return `<tr class="detail"><td colspan="5">
       <p class="fine">Incumbent: <b>${esc(r.incumbent.name)}</b> (${esc(r.incumbent.party)}) · ${r.status === "open" ? "open seat" : r.status === "uncertain" ? "incumbent's plans uncertain" : "incumbent running"}</p>
+      ${matchup(r)}
       ${r.note ? `<p>${esc(r.note)}</p>` : ""}
-      <h4 class="detail-h">How the evidence combines</h4>
-      <div class="table-wrap"><table class="signals">
-        <thead><tr><th>Signal</th><th class="num">Estimated margin</th><th class="num">Uncertainty</th><th class="num">Weight</th></tr></thead>
-        <tbody>${r.signals.map((sg) => `<tr><td>${esc(sg.label)}</td><td class="num">${f(sg.margin)}</td><td class="num">±${fmt(sg.sigma)}</td><td class="num">${sg.share}%</td></tr>`).join("")}
-          <tr class="total"><td>Combined forecast</td><td class="num">${f(r.margin)}</td><td class="num">±${r.sigma}</td><td class="num">${fmt(r.pD * 100)}% ${r.challenger === "I" ? "Ind." : "D"}</td></tr></tbody>
-      </table></div>
+      <h4 class="detail-h">How the evidence combines (one third each: Democratic-leaning, independent, Republican-leaning)</h4>
+      ${evidenceTable(r)}
       <h4 class="detail-h">Fundamentals breakdown</h4>
       <div class="factors">
         <div>Partisan baseline${r.pvi != null ? ` (Cook PVI ${r.pvi > 0 ? "D" : r.pvi < 0 ? "R" : "EVEN"}${r.pvi ? "+" + Math.abs(r.pvi) : ""})` : ""}<b>${f(r.baseline)}</b></div>
@@ -654,9 +723,8 @@
         <div>Fundamentals total<b>${f(r.fundamentals)}</b></div>
       </div>
       ${r.money && (r.money.d || r.money.r) ? `<p class="fine">Fundraising (<a href="${esc(SRC.money?.url ?? "#")}" target="_blank" rel="noopener">FEC</a>): ${money(r.money.d)} · ${money(r.money.r)}.</p>` : ""}
-      ${r.nominees ? `<p class="fine"><b>${esc(r.nominees.D)}</b> (${r.challenger === "I" ? "I" : "D"}) vs. <b>${esc(r.nominees.R)}</b> (R).</p>` : ""}
-      ${r.ratings ? `<p class="fine">Expert ratings (<a href="${esc(SRC.ratings?.url ?? "#")}" target="_blank" rel="noopener">compiled on Wikipedia</a>): ${r.ratings.ratings.map((x) => `${esc(x.by)} <b>${esc(x.rating)}</b>`).join(" · ")}</p>` : ""}
-      ${r.market ? `<p class="fine">Prediction market: <a href="${esc(r.market.url)}" target="_blank" rel="noopener">Kalshi</a> prices ${esc(r.market.D ?? "Democrat")} at ${Math.round(r.market.pD * 100)}% and ${esc(r.market.R ?? "Republican")} at ${Math.round((1 - r.market.pD) * 100)}%.</p>` : ""}
+      ${r.ratings ? ratingsLine(r) : ""}
+      ${marketsLine(r)}
       <p class="fine">Win probability = Φ(combined margin ÷ σ) = Φ(${fmt(r.margin)} ÷ ${r.sigma}) = ${fmt(r.pD * 100)}% ${r.challenger === "I" ? "independent" : "Democratic"}.
       ${r.office !== "mayor" ? `<button class="btn-ghost" style="padding:2px 8px;font-size:12px" data-open-state="${r.state}">View ${esc(M.states[r.state].name)} on the map</button>` : ""}</p>
     </td></tr>`;
@@ -727,8 +795,8 @@ Other       = 0.4 · non-major vote + 0.4%
 
       <h2>4. 2026 midterm forecast</h2>
       <p class="callout"><b>No polls are used in the forecast.</b> Head-to-head race polls, the generic congressional ballot and approval ratings are all left out. Each race is estimated from votes already cast, money, the economy, expert ratings and prediction markets. Ratings and markets are judgments made by others, and some of those forecasters do look at polls.</p>
-      <p>Each kind of evidence becomes an estimated Democratic margin with an uncertainty. They're averaged with <b>inverse-variance weights</b>, so more precise evidence counts more.</p>
-<pre class="formula">Fundamentals (σ 6–7; governors 10)
+      <p>Each kind of evidence becomes an estimated Democratic margin with an uncertainty. The evidence is sorted into <b>three equal groups</b>: <b>Democratic-leaning sources</b>, <b>independent sources</b> and <b>Republican-leaning sources</b>. Each group counts for exactly one third of the forecast.</p>
+<pre class="formula">Fundamentals (σ 6–7; governors 10)                               → independent group
   = partisan baseline (vote history; Cook PVI on 2026 House lines)
   + national climate × elasticity
   + incumbency (Senate ±2.5, Governor ±3; open House seats −3 for the departing party)
@@ -736,16 +804,25 @@ Other       = 0.4 · non-major vote + 0.4%
   + campaign money (2 × ln(D receipts ÷ R receipts), FEC, max ±4)
   + state economy (unemployment and GDP growth vs. the nation, max ±2)
   + documented personal vote from past elections (e.g. Collins 2020, Osborn 2024)
-Expert ratings     (σ 6; 10 if every rater says Safe): average of up to 10 forecasters
-                     Safe/Solid ±15 · Likely ±8 · Lean ±4 · Tilt ±1.5 · Toss-up 0
-Prediction market  (σ 5): Kalshi price converted to a margin, Φ⁻¹(price) × 6
+Expert ratings (σ 6; 10 if every rater in the group says Safe)  → by outlet (table below)
+  each group's raters averaged: Safe/Solid ±15 · Likely ±8 · Lean ±4 · Tilt ±1.5 · Toss-up 0
+Prediction markets (σ 5 each): Kalshi and Polymarket, Φ⁻¹(price) × 6 → independent group
 
-weight = 1 ÷ σ²   (ratings and markets × 0.6, because they partly react to each other)
+Inside a group:  weight = 1 ÷ σ²  (× 0.6 for ratings and markets when a group has several
+                 signals, because they partly react to each other)
 If fundamentals sit more than 8 pts from the ratings/markets average, their σ is multiplied by (gap ÷ 8).
-combined margin = Σ weight × margin ÷ Σ weight      combined σ = max(1 ÷ √Σ weight, 3.5)
-P(win) = Φ(combined margin ÷ combined σ)</pre>
+Forecast margin = ⅓ Democratic-leaning + ⅓ independent + ⅓ Republican-leaning
+Forecast σ      = σ of that average, with the groups' errors 50% correlated (minimum 3.5)
+P(win) = Φ(forecast margin ÷ forecast σ)</pre>
+      <p><b>Keeping it balanced.</b> If only one partisan side rates a race, using that side alone would tilt the result. In that case both partisan groups are set aside and the independent group decides the race. House seats that no forecaster rates as competitive are independent-only.</p>
+      <p><b>How each outlet is classified.</b> An outlet is <i>Democratic-leaning</i> or <i>Republican-leaning</i> when <a href="https://www.allsides.com/media-bias/ratings" target="_blank" rel="noopener">AllSides</a> or <a href="https://mediabiasfactcheck.com/" target="_blank" rel="noopener">Media Bias/Fact Check</a> rates it left or right of center, and neither rates it the other way. Everything else is <i>independent</i>: nonpartisan handicappers, data services, prediction markets and official statistics. Head-to-head polls are not used in either group.</p>
+      <div class="table-wrap"><table class="method-table">
+        <thead><tr><th>Source</th><th>Group</th><th>Basis</th></tr></thead>
+        <tbody>${["D", "I", "R"].map((side) => Object.values(M.SOURCE_LEAN).filter((x) => x.side === side).map((x) => `<tr><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a></td><td><span class="lean-tag ${side}">${esc(M.SIDE_LABEL[side].replace(" sources", ""))}</span></td><td>${esc(x.basis)}</td></tr>`).join("")).join("")}
+          <tr><td>Kalshi · Polymarket</td><td><span class="lean-tag I">Independent</span></td><td>Prediction markets: prices set by traders, not an outlet</td></tr>
+          <tr><td>Election results · Census · BLS · BEA · FEC</td><td><span class="lean-tag I">Independent</span></td><td>Official statistics (the fundamentals)</td></tr></tbody></table></div>
       <p><b>National climate</b> uses actual votes, not polls. Across the 2025–26 special elections, Democrats ran ${POLLING.specialElections?.value ?? "—"} points ahead of each district's 2024 presidential result. That swing is discounted to 60%, because special-election turnout exaggerates swings (the 2017–18 specials versus the 2018 result), and starts from the 2024 national margin of R+1.5. Result: <b>${gbLabel(M.climateParts().value)}</b>. Move the slider on the forecast tab to try your own value.</p>
-      <p><b>Who is running:</b> Ballotpedia's list of members not seeking re-election marks open seats. Nominees come from prediction markets and each party's leading fundraiser in FEC filings.</p>
+      <p><b>Who is running:</b> Ballotpedia's list of members not seeking re-election marks open seats. Nominees come from prediction markets (Kalshi, Polymarket) and each party's leading fundraiser in FEC filings.</p>
       <p><b>Following races:</b> tap ☆ on any race to follow it. The <b>Following</b> filter then shows only your races. The list is saved on your device.</p>
       <p>Chamber control comes from 20,000 simulated elections. Each simulation draws one shared national error (σ 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties.</p>
 
@@ -757,7 +834,7 @@ P(win) = Φ(combined margin ÷ combined σ)</pre>
         <li><b>Simple averages.</b> No pollster grades or "house effect" corrections, so anyone can reproduce the number.</li>
         <li><b>Neutral imputation.</b> A governor with no qualifying poll gets the median of all sourced governors (${fmt(M.approvalMedian)}%), not a guess in either direction.</li>
         <li><b>Polls are shown for reference only.</b> The approval ratings below feed the government rubric's public-opinion score. They are not used in the election forecast.</li>
-        <li><b>No single source decides a race.</b> Expert ratings (from forecasters with a range of perspectives), prediction markets, fundraising, the economy and vote history are combined by precision weighting, so one outlier can't swing a race.</li>
+        <li><b>Equal thirds.</b> Democratic-leaning, independent and Republican-leaning sources each count one third of every race forecast (section 4), so neither side's outlets can outvote the other.</li>
       </ol>
       <div class="table-wrap"><table class="method-table">
         <thead><tr><th>State</th><th>Governor</th><th class="num">Approval used</th><th>Basis</th></tr></thead>

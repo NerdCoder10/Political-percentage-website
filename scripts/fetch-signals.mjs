@@ -2,7 +2,7 @@
 //   • Expert race ratings — every forecaster column in Wikipedia's 2026 Senate, governor and House
 //     rating tables (Cook, Inside Elections, Sabato, Decision Desk HQ, The Economist, Fox News,
 //     RealClearPolitics, Silver Bulletin, …), plus Cook PVI on the new district lines.
-//   • Prediction markets — Kalshi winner markets for each Senate, governor and House race.
+//   • Prediction markets — Kalshi and Polymarket winner markets for each Senate, governor and House race.
 //   • Campaign money — FEC "current campaigns" summary (receipts and cash on hand) for every
 //     House and Senate candidate.
 //   • Who is not running — Ballotpedia's list of members of Congress not seeking re-election.
@@ -145,6 +145,48 @@ step("kalshi", () => {
 });
 console.log(`markets: ${Object.keys(markets).length} races`);
 
+// ------------------------------------------------------------------ prediction markets (Polymarket)
+// A second, independently traded market. Party-winner events for each Senate, governor and House race.
+const polymarkets = {};
+step("polymarket", () => {
+  const events = [];
+  for (let offset = 0; offset < 3000; offset += 100) {
+    const page = JSON.parse(download(`polymarket-${offset}.json`, `https://gamma-api.polymarket.com/events?tag_slug=midterms&closed=false&limit=100&offset=${offset}`, { maxAgeMin: 25, retries: 2 }));
+    events.push(...page);
+    if (page.length < 100) break;
+  }
+  const stateOf = (slug) => byName[slug.replace(/-/g, " ")];
+  for (const ev of events) {
+    let id, m;
+    if ((m = ev.slug.match(/^([a-z-]+)-senate-election-winner(-\d+)?$/)) && stateOf(m[1])) id = `SEN-${stateOf(m[1])}`;
+    else if ((m = ev.slug.match(/^([a-z-]+)-governor-(?:winner-2026|election-winner)$/)) && stateOf(m[1])) id = `GOV-${stateOf(m[1])}`;
+    else if ((m = ev.slug.match(/^(?:which-party-will-win-the-house-race-for-the-)?([a-z]{2})-(\d{2}|al)(?:-house-election-winner|-seat)$/))) {
+      const st = m[1].toUpperCase();
+      if (seats[st]) id = sid(st, m[2] === "al" || seats[st] === 1 ? 0 : +m[2]);
+    }
+    if (!id) continue;
+    const price = (mk) => {
+      const bid = +mk.bestBid, ask = +mk.bestAsk, last = +mk.lastTradePrice;
+      return bid > 0 && ask > 0 && ask - bid <= 0.1 ? (bid + ask) / 2 : last || 0;
+    };
+    let pD = 0, pR = 0, pI = 0;
+    const names = {};
+    const nameOf = (g) => (/\((D|R|I)\)/.test(g) ? g.replace(/\s*\((D|R|I)\)\s*/, "").replace(/^Sen\.\s*/, "").trim() : null);
+    for (const mk of ev.markets ?? []) {
+      if (!mk.active || mk.closed) continue;
+      const q = `${mk.question} ${mk.groupItemTitle ?? ""}`;
+      const p = price(mk);
+      if (/Democrat|\(D\)/.test(q)) { pD += p; names.D ??= nameOf(mk.groupItemTitle ?? ""); }
+      else if (/Republican|\(R\)/.test(q)) { pR += p; names.R ??= nameOf(mk.groupItemTitle ?? ""); }
+      else if (/independent/i.test(q)) pI += p;
+    }
+    if (pD + pR + pI < 0.5 || pR === 0) continue; // candidate-only or illiquid markets are skipped
+    // An independent backed by Democrats (e.g. Nebraska) counts on the non-Republican side.
+    polymarkets[id] = { pD: Math.round(((pD + pI) / (pD + pI + pR)) * 100) / 100, ...(names.D && { D: names.D }), ...(names.R && { R: names.R }), url: `https://polymarket.com/event/${ev.slug}`, volume: Math.round(+ev.volume || 0) };
+  }
+});
+console.log(`polymarket: ${Object.keys(polymarkets).length} races`);
+
 // ------------------------------------------------------------------ campaign money (FEC)
 const money = {};
 step("fec", () => {
@@ -198,14 +240,15 @@ const payload = {
   sources: {
     ratings: { name: "Expert ratings compiled in Wikipedia's 2026 Senate, gubernatorial and House rating tables", url: WIKI + "2026_United_States_Senate_elections" },
     markets: { name: "Kalshi prediction markets (mid-point of bid/ask)", url: "https://kalshi.com/category/elections" },
+    polymarkets: { name: "Polymarket prediction markets (mid-point of bid/ask)", url: "https://polymarket.com/predictions/midterms" },
     money: { name: "Federal Election Commission, 2025–26 current campaigns summary (webl26)", url: "https://www.fec.gov/data/browse-data/?tab=bulk-data" },
     notRunning: { name: "Ballotpedia, members of Congress not running for re-election in 2026", url: "https://ballotpedia.org/List_of_U.S._Congress_incumbents_who_are_not_running_for_re-election_in_2026" },
   },
-  ratings, markets, money, notRunning,
+  ratings, markets, polymarkets, money, notRunning,
 };
 const previous = fs.existsSync(file) ? (await import(`${pathToFileURL(file).href}?t=${Date.now()}`), globalThis.RACE_SIGNALS) : null;
 // A source that failed or came back nearly empty this run keeps its previous data.
-for (const key of ["ratings", "markets", "money"]) {
+for (const key of ["ratings", "markets", "polymarkets", "money"]) {
   const before = Object.keys(previous?.[key] ?? {}).length, now = Object.keys(payload[key]).length;
   if (before && now < before * 0.5) { payload[key] = previous[key]; console.log(`${key}: only ${now} this run (had ${before}); kept previous`); }
 }

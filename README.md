@@ -8,7 +8,7 @@ An interactive U.S. political map. It needs no build step: open `index.html` in 
   - The **1,000-point Government Performance Rubric** for the nation and every state.
   - The House delegation, with a percentage breakdown for every congressional district.
 - **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. A generic-ballot slider re-runs every race.
-- **Races by State tab.** Only one state's Senate and House races, plus a **My state** panel of its senators and representatives that is available on every tab.
+- **Races by State tab.** Only one state's governor, Senate and House races, plus a **My state** panel of its governor, senators and representatives that is available on every tab.
 - **Rubric & Methodology tab.** The full scoring rubric, weights and goalposts, state rankings, and every formula.
 
 ## Install it on your phone
@@ -31,12 +31,12 @@ The **Stats** tab shows every statistic behind the 1,000-point rubric.
 
 ## Races by State tab
 
-The **Races** tab researches one state at a time. Pick a state to see only its 2026 **Senate and House** races. You can filter to Senate or House and sort by district or by closest race. Each race card shows:
-- the incumbent, the nominees, the rating and the win probability;
+The **Races** tab researches one state at a time. Pick a state to see only its 2026 **governor, Senate and House** races. You can filter to Senate or House and sort by district or by closest race. Each race card shows:
+- the incumbent, the nominees with their photos, the rating and the win probability;
 - expandable evidence: fundamentals, expert ratings, Kalshi markets, FEC money and the district's lean;
 - the incumbent's biography.
 
-**My state (every tab).** The **My state** button in the top bar opens a panel with that state's two senators and every House member, with bios. It works from any tab. The state is remembered on the device, and it updates whenever you pick a state in the Races tab, the Midterms state filter or the map.
+**My state (every tab).** The **My state** button in the top bar opens a panel with that state's governor, two senators and every House member, with photos and bios. It works from any tab. The state is remembered on the device, and it updates whenever you pick a state in the Races tab, the Midterms state filter or the map.
 
 ## Run it
 
@@ -83,11 +83,11 @@ Congressional districts blend the 2024 House vote with the state vote. Cities st
 
 Each indicator is scored against fixed best and worst goalposts, so a state's score never depends on how other states do.
 
-**Midterm forecast.** Each race's expected margin is:
+**Midterm forecast.** Each race's fundamentals margin is:
 
 partisan baseline + national climate + incumbency + public approval + qualification edge + documented personal vote
 
-The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simulations that share a national polling error.
+The fundamentals are then averaged with expert ratings and prediction markets in three equal thirds (Democratic-leaning, independent, Republican-leaning sources; see below). The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simulations that share a national polling error.
 
 ## Public-opinion data and neutrality
 
@@ -98,23 +98,36 @@ The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simul
 3. **Simple averages.** No pollster grades or house-effect corrections.
 4. **Neutral imputation.** Governors with no qualifying poll get the median of all sourced governors and are flagged.
 5. **Several aggregators for national numbers.** President approval averages RealClearPolitics, Silver Bulletin, NYT and Poliwave; the generic ballot averages Silver Bulletin, RCP, FiftyPlusOne and USPollingData.
-6. **Capped poll weight.** Head-to-head polls get at most 70% weight in the forecast; the rest comes from vote-history fundamentals.
+6. **Equal thirds in the forecast.** Polls are not used in the election forecast. Democratic-leaning, independent and Republican-leaning sources each count one third (see below).
 
 The Methodology tab shows every governor's approval with its sources. Each race in the Midterm tab lists the polls behind it.
 
-## How the forecast combines evidence (no polls)
+## How the forecast combines evidence (no polls, equal thirds)
 
-The forecast uses **no polls**: no head-to-head race polls, generic ballot or approval ratings. Each race turns the remaining evidence into an estimated margin with an uncertainty and weights them by precision (1 ÷ σ²):
+The forecast uses **no polls**: no head-to-head race polls, generic ballot or approval ratings. Every piece of evidence becomes an estimated margin with an uncertainty, and it is sorted into **three groups that each count exactly one third**:
 
-| Evidence | Source | Uncertainty |
-| --- | --- | --- |
-| Fundamentals: vote history, Cook PVI on 2026 lines, national climate, incumbency, qualifications, FEC fundraising, state economy, documented personal vote | Election results, Census/BLS/BEA, FEC | σ 6–7 (governors 10) |
-| Expert ratings: Cook, Inside Elections, Sabato, DDHQ, Economist, Fox, RCP, Silver Bulletin and others | Wikipedia's rating tables | σ 6 |
-| Prediction markets | Kalshi | σ 5 |
+| Group | Evidence |
+| --- | --- |
+| **Democratic-leaning sources** (⅓) | Expert ratings from The Economist and Sabato's Crystal Ball (and NBC News whenever it publishes ratings) |
+| **Independent sources** (⅓) | Fundamentals (vote history, Cook PVI, climate from special elections, incumbency, qualifications, FEC money, state economy); ratings from Cook, Inside Elections, Decision Desk HQ, Silver Bulletin, Split Ticket and FiftyPlusOne; prediction markets (Kalshi, Polymarket) |
+| **Republican-leaning sources** (⅓) | Expert ratings from Fox News and RealClearPolitics |
 
-The **national climate** comes from actual votes: the 2025–26 special-election swing over the 2024 baseline, discounted to 60%. The forecast tab's slider can override it. Ratings and markets get a 0.6 correlation discount, and fundamentals far from them are down-weighted. Approval polls in `data/polling.js` are used only for the rubric's public-opinion score.
+- **Classification rule.** An outlet is Democratic- or Republican-leaning when [AllSides](https://www.allsides.com/media-bias/ratings) or [Media Bias/Fact Check](https://mediabiasfactcheck.com/) rates it left or right of center and neither rates it the other way. Everything else is independent. The full table, with each rating, is on the Methodology tab and in `M.SOURCE_LEAN` in `js/model.js`.
+- **Inside a group.** Signals are combined by precision (1 ÷ σ²). Ratings and markets get a 0.6 discount when a group holds several, and fundamentals far from the ratings and markets are down-weighted.
+- **Combining the groups.** The forecast is the plain average of the three groups. Its uncertainty assumes the groups' errors are 50% correlated.
+- **Keeping it balanced.** If only one partisan side rates a race, both partisan groups are set aside and the independent group decides it. House seats that no forecaster rates as competitive rest on the independent group alone.
 
 **Following races:** tap ☆ next to any race, then the **Following** filter shows only your races. The list is saved on the device.
+
+## Photos
+
+`scripts/fetch-photos.mjs` (`npm run fetch:photos`) finds photos and writes `data/generated/photos.js`:
+- **Members of Congress:** official portraits from [@unitedstates/images](https://github.com/unitedstates/images), which are public domain. Members too new to be in that set get their Wikipedia photo.
+- **Governors, national leaders, mayors and 2026 nominees:** the lead image of their Wikipedia article, hosted on Wikimedia Commons and credited on each card.
+- **Matching nominees:** a nominee is matched through the links on that race's own Wikipedia article, so common names resolve to the right person. A direct lookup is accepted only when the article names the person's state and describes a politician or candidate.
+- **No photo:** people without a photo show their initials.
+
+The scheduled refresh looks up at most 150 people per run. Each result, including "no photo", is re-checked after a week.
 
 ## Data sources
 
@@ -122,6 +135,7 @@ The **national climate** comes from actual votes: the 2025–26 special-election
 - 2024 U.S. House results: [fivethirtyeight/election-results](https://github.com/fivethirtyeight/election-results)
 - Current members of Congress: [unitedstates/congress-legislators](https://github.com/unitedstates/congress-legislators)
 - Map: [us-atlas](https://github.com/topojson/us-atlas) (U.S. Census boundaries); 1,000 largest cities: plotly/datasets
+- Prediction markets: [Kalshi](https://kalshi.com/category/elections) and [Polymarket](https://polymarket.com/predictions/midterms) public APIs (no key)
 - Rubric indicators: downloaded from the official agencies by `scripts/fetch-indicators.mjs`. Only no-key bulk files are used, so anyone can rerun it.
 
 | Indicator | Source (latest data year) |
