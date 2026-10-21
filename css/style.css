@@ -334,3 +334,50 @@ td.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
 .source-list { padding-left: 22px; font-size: 13.5px; }
 .source-list li { margin: 4px 0; }
 .source-list li:target { background: var(--surface-2); border-radius: 6px; }
+
+/* ---------- My state button + drawer (all tabs) ---------- */
+.my-state-btn {
+  margin-left: auto; flex: none; border: 1px solid var(--line); background: var(--surface-2); color: var(--text);
+  padding: 6px 12px; border-radius: 8px; font-weight: 700; cursor: pointer; white-space: nowrap;
+}
+.my-state-btn + .install-btn { margin-left: 8px; }
+.my-state-btn[aria-expanded="true"] { background: var(--text); color: var(--surface); }
+.drawer {
+  position: fixed; z-index: 45; top: calc(var(--topbar) + 8px); right: 12px; bottom: 12px; width: min(420px, calc(100vw - 24px));
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
+  overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px calc(20px + var(--safe-bottom));
+}
+.drawer-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.drawer-head h2 { font-size: 22px; }
+.drawer h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 18px 0 6px; }
+.drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.del-person { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.del-person > summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: auto 1fr; gap: 0 8px; align-items: center; }
+.del-person > summary::-webkit-details-marker { display: none; }
+.del-person .chip { margin: 0; grid-row: span 2; }
+.del-name { font-weight: 700; }
+.del-sub { font-size: 12.5px; color: var(--muted); grid-column: 2; }
+.del-person.vacant { color: var(--muted); font-size: 13.5px; }
+@media (max-width: 820px) {
+  .drawer { top: auto; left: 0; right: 0; bottom: 0; width: auto; max-height: 75vh; border-radius: 16px 16px 0 0; }
+  .my-state-btn { padding: 5px 9px; font-size: 13px; }
+}
+
+/* ---------- Races by State tab ---------- */
+.races-head { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: end; margin: 14px 0; }
+.state-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.race-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 12px; }
+.race-card-top { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: start; }
+.race-card h3 { font-size: 17px; margin: 0; }
+.race-card .race-meta { font-size: 13px; color: var(--muted); }
+.race-card .prob { margin-top: 10px; }
+.race-card details { margin-top: 10px; }
+.race-card summary { cursor: pointer; font-weight: 600; font-size: 13.5px; color: var(--muted); }
+.races-section-title { font-size: 20px; margin: 24px 0 10px; }
+.lean-mini-row { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+@media (max-width: 560px) {
+  /* Keep every tab label readable next to the My state / Install buttons. */
+  .tabs button { padding: 8px 7px; }
+  .my-state-btn, .install-btn { padding: 5px 7px; font-size: 12px; }
+}
+@media (max-width: 420px) { .tabs button { padding: 8px 5px; font-size: 14px; } }

@@ -129,6 +129,7 @@
   // ------------------------------------------------------------------ navigation
   let view = { level: "nation" };
   function go(next, { animate = true, push = true } = {}) {
+    if (next.st && push) setTrackedState(next.st);
     view = { level: next.level, st: next.st ?? null, fips: next.fips ?? null, city: next.city ?? null };
     hideTip();
     paintMap();
@@ -159,6 +160,8 @@
     if (kind === "county") go({ level: "county", st: ELECTIONS.counties[arg].st, fips: arg });
     if (kind === "city") { const c = CITIES[+arg]; go({ level: "city", st: c[1], fips: c[5], city: +arg }); }
     if (kind === "tab") showTab(arg);
+    if (kind === "races") { setTrackedState(arg); closeDelegation(); showTab("races"); }
+    if (kind === "state") closeDelegation();
   });
 
   // ------------------------------------------------------------------ panel building blocks
@@ -428,6 +431,79 @@
     paintMap();
   }));
 
+  // ------------------------------------------------------------------ "My state": tracked across every tab
+  // Remembered on this device. Set when the user picks a state in the Races tab or the My state panel,
+  // taps a state on the map, or filters the Midterms list by state.
+  const TRACK_KEY = "pp-my-state";
+  let trackedState = (() => { try { const v = localStorage.getItem(TRACK_KEY); return M.states[v] ? v : null; } catch { return null; } })();
+  function setTrackedState(st) {
+    if (!st || !M.states[st] || st === trackedState) return;
+    trackedState = st;
+    try { localStorage.setItem(TRACK_KEY, st); } catch { /* storage blocked */ }
+    updateMyStateButton();
+    if (!$("#delegation").hidden) renderDelegation();
+    dispatchEvent(new CustomEvent("pp:state", { detail: st }));
+  }
+  function updateMyStateButton() {
+    const b = $("#my-state-btn");
+    b.innerHTML = trackedState ? `<span class="tab-long">My state: </span>${trackedState}` : "My state";
+    b.setAttribute("aria-label", trackedState ? `My state, ${M.states[trackedState].name}: senators and representatives` : "Choose my state");
+  }
+  const raceFor = (id) => forecast.races.find((r) => r.id === id);
+  const holdLine = (r, party) => {
+    if (!r) return "";
+    const p = party === "D" || party === "I" ? r.pD : 1 - r.pD;
+    return r.status === "open" ? `Seat open in 2026 · ${party} hold ${Math.round(p * 100)}%` : `Up in 2026 · ${Math.round(p * 100)}% to win`;
+  };
+  function renderDelegation() {
+    const el = $("#delegation");
+    const st = trackedState;
+    const opts = Object.values(M.states).sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<option value="${s.abbr}" ${s.abbr === st ? "selected" : ""}>${esc(s.name)}</option>`).join("");
+    if (!st) {
+      el.innerHTML = `<div class="drawer-head"><h2>My state</h2><button class="btn-ghost" data-close-drawer>Close</button></div>
+        <label class="stat-pick">Choose your state<select id="delegation-state"><option value="">Select…</option>${opts}</select></label>
+        <p class="hint">Your senators and representatives will stay one tap away on every tab.</p>`;
+    } else {
+      const s = M.states[st];
+      const sens = M.senators(st);
+      const reps = [];
+      if (s.seats) for (let d = s.seats === 1 ? 0 : 1; d <= (s.seats === 1 ? 0 : s.seats); d++) reps.push(d);
+      const senRace = (m) => raceFor(`SEN-${st}`)?.incumbent.id === m.id ? raceFor(`SEN-${st}`) : raceFor(`SEN-${st}-S`)?.incumbent.id === m.id ? raceFor(`SEN-${st}-S`) : null;
+      const person = (m, office, kind, race, extra = "") => m ? `<details class="del-person"><summary>
+          <span class="chip ${m.party}">${m.party}</span><span class="del-name">${esc(m.name)}</span>
+          <span class="del-sub">${esc(office)}${race ? ` · ${esc(holdLine(race, m.caucus ?? m.party))}` : extra}</span></summary>
+          ${leaderCard(m, office, kind, { forecast: race, districtMargin: race?.baseline, open: true })}</details>` : "";
+      el.innerHTML = `<div class="drawer-head"><h2>${esc(s.name)}</h2><button class="btn-ghost" data-close-drawer>Close</button></div>
+        <label class="stat-pick">Change state<select id="delegation-state">${opts}</select></label>
+        <div class="drawer-actions"><button class="btn-ghost" data-nav="races:${st}">Research ${st} races</button><button class="btn-ghost" data-nav="state:${st}">Open on map</button></div>
+        ${st === "DC" ? "" : `<h3>U.S. Senators</h3>${sens.map((m) => person(m, `U.S. Senator · Class ${m.cls}`, "senator", senRace(m), ` · Term ends ${m.end.slice(0, 4)}`)).join("")}`}
+        <h3>U.S. Representatives${s.seats ? ` · ${s.seats}` : ""}</h3>
+        ${reps.map((d) => {
+          const m = M.representative(st, d);
+          const id = `${st}-${d === 0 ? "AL" : String(d).padStart(2, "0")}`;
+          const label = d === 0 ? "At-large" : `District ${d}`;
+          return m ? person(m, `${label}`, "representative", raceFor(id)) : `<div class="del-person vacant"><span class="chip X">—</span> ${label}: vacant</div>`;
+        }).join("")}
+        ${st === "DC" ? person(M.representative("DC", 0), "Delegate (non-voting)", "representative", null, "") : ""}
+        <p class="fine">Tap a name for the biography, qualifications and 2026 outlook.</p>`;
+    }
+    el.querySelector("#delegation-state")?.addEventListener("change", (e) => setTrackedState(e.target.value));
+  }
+  function openDelegation() {
+    const el = $("#delegation");
+    renderDelegation();
+    el.hidden = false;
+    $("#my-state-btn").setAttribute("aria-expanded", "true");
+    el.querySelector("select, summary, button")?.focus();
+  }
+  function closeDelegation() { $("#delegation").hidden = true; $("#my-state-btn").setAttribute("aria-expanded", "false"); }
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-close-drawer]")) closeDelegation();
+    else if (e.target.closest("#my-state-btn")) ($("#delegation").hidden ? openDelegation() : closeDelegation());
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#delegation").hidden) closeDelegation(); });
+  updateMyStateButton();
+
   // ------------------------------------------------------------------ tabs + hash
   function showTab(tab) {
     document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === tab));
@@ -435,9 +511,11 @@
     $("#view-midterms").hidden = tab !== "midterms";
     $("#view-method").hidden = tab !== "method";
     $("#view-stats").hidden = tab !== "stats";
+    $("#view-races").hidden = tab !== "races";
     if (tab === "midterms") renderMidterms();
     if (tab === "method" && !$("#method").innerHTML) renderMethod();
     if (tab === "stats") requestAnimationFrame(() => globalThis.renderStats?.($("#stats")));
+    if (tab === "races") globalThis.renderRaces?.($("#races"));
     if (tab === "map") requestAnimationFrame(() => go(view, { animate: false, push: false }));
     currentTab = tab;
     setHash();
@@ -445,15 +523,23 @@
   let currentTab = "map";
   // Used by the Stats tab to jump to a state on the map.
   globalThis.openState = (st) => { showTab("map"); go({ level: "state", st }); };
+  // Shared helpers for the Races tab (js/races.js).
+  globalThis.PP = {
+    getForecast: () => forecast, leaderCard, esc, fmt, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
+    getTrackedState: () => trackedState, setTrackedState, openDelegation,
+    isFollowing: (id) => following.has(id),
+    toggleFollow: (id) => { following.has(id) ? following.delete(id) : following.add(id); saveFollowing(); updateFollowCount(); },
+  };
   document.querySelectorAll("[data-tab]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
   function setHash() {
-    const h = currentTab !== "map" ? currentTab
+    const h = currentTab === "races" && trackedState ? `races/${trackedState}` : currentTab !== "map" ? currentTab
       : view.level === "state" ? `state/${view.st}` : view.level === "county" ? `county/${view.fips}`
       : view.level === "city" ? `city/${encodeURIComponent(CITIES[view.city][0] + "|" + view.st)}` : "";
     try { history.replaceState(null, "", h ? "#" + h : location.pathname + location.search); } catch { /* sandboxed frame */ }
   }
   function fromHash() {
     const [kind, arg] = decodeURIComponent(location.hash.slice(1)).split("/");
+    if (kind === "races") { if (M.states[arg]) setTrackedState(arg); go({ level: "nation" }, { animate: false, push: false }); showTab("races"); return; }
     if (kind === "midterms" || kind === "method" || kind === "stats") { go({ level: "nation" }, { animate: false, push: false }); showTab(kind); return; }
     if (kind === "state" && M.states[arg]) return go({ level: "state", st: arg }, { animate: false });
     if (kind === "county" && ELECTIONS.counties[arg]) return go({ level: "county", st: ELECTIONS.counties[arg].st, fips: arg }, { animate: false });
@@ -478,6 +564,7 @@
   updateFollowCount();
   $("#state-filter").innerHTML = `<option value="">All states</option>` + Object.values(M.states).sort((a, b) => a.name.localeCompare(b.name)).map((s) => `<option value="${s.abbr}">${esc(s.name)}</option>`).join("");
   ["#state-filter", "#sort", "#race-search"].forEach((s) => $(s).addEventListener("input", renderRaceTable));
+  $("#state-filter").addEventListener("input", (e) => setTrackedState(e.target.value));
   document.querySelectorAll("[data-office]").forEach((b) => b.addEventListener("click", () => {
     officeFilter = b.dataset.office;
     document.querySelectorAll("[data-office]").forEach((x) => x.setAttribute("aria-pressed", x === b));

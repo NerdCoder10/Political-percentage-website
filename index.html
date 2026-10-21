@@ -26,8 +26,10 @@
       <button role="tab" id="tab-midterms" aria-controls="view-midterms" aria-selected="false" data-tab="midterms"><span class="tab-long">2026 Midterm Forecast</span><span class="tab-short">Midterms</span></button>
       <button role="tab" id="tab-method" aria-controls="view-method" aria-selected="false" data-tab="method"><span class="tab-long">Rubric &amp; Methodology</span><span class="tab-short">Rubric</span></button>
       <button role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false" data-tab="stats"><span class="tab-long">Statistics &amp; Sources</span><span class="tab-short">Stats</span></button>
+      <button role="tab" id="tab-races" aria-controls="view-races" aria-selected="false" data-tab="races"><span class="tab-long">Races by State</span><span class="tab-short">Races</span></button>
     </nav>
-    <button id="install-btn" class="install-btn" hidden>Install app</button>
+    <button id="my-state-btn" class="my-state-btn" aria-expanded="false" aria-controls="delegation">My state</button>
+    <button id="install-btn" class="install-btn" hidden>Install<span class="tab-long"> app</span></button>
   </header>
   <div id="install-help" class="install-help" role="dialog" aria-label="Install on iPhone or iPad" hidden>
     <p><b>Add Political Percentage to your Home Screen</b></p>
@@ -104,6 +106,14 @@
   </main>
 
   <!-- TAB 3: methodology -->
+  <!-- "My state" panel: senators and representatives, available on every tab -->
+  <aside id="delegation" class="drawer" role="dialog" aria-label="My state's senators and representatives" hidden></aside>
+
+  <!-- TAB 5: research Senate and House races one state at a time -->
+  <main id="view-races" class="view page" role="tabpanel" aria-labelledby="tab-races" hidden>
+    <div class="page-inner" id="races"></div>
+  </main>
+
   <!-- TAB 4: statistics behind the rubric -->
   <main id="view-stats" class="view page" role="tabpanel" aria-labelledby="tab-stats" hidden>
     <div class="page-inner" id="stats"></div>
@@ -130,6 +140,7 @@
   <script src="js/model.js"></script>
   <script src="js/app.js"></script>
   <script src="js/stats.js"></script>
+  <script src="js/races.js"></script>
   <script src="js/refresh.js"></script>
   <script src="js/pwa.js"></script>
 </body>
