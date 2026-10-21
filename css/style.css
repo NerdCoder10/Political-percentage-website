@@ -415,3 +415,12 @@ table.signals tr.sub td:first-child { padding-left: 22px; color: var(--muted); }
 .vote-line { font-size: 12.5px; color: var(--muted); margin-top: 4px; font-variant-numeric: tabular-nums; }
 .vote-line b { color: var(--text); font-weight: 600; }
 .vote-table td .chip { margin-left: 4px; }
+
+/* ---------- Mayor photos on the map ---------- */
+.mayor { cursor: pointer; }
+.mayor-ring { fill: none; stroke: var(--oth); vector-effect: none; }
+.mayor[data-party="D"] .mayor-ring { stroke: var(--dem); }
+.mayor[data-party="R"] .mayor-ring { stroke: var(--rep); }
+.mayor[data-party="I"] .mayor-ring { stroke: var(--ind); }
+.mayor image { pointer-events: all; }
+.mayor-ring { fill: var(--surface); fill-opacity: .001; }

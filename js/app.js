@@ -50,7 +50,12 @@
   const borders = root.append("path").attr("class", "state-borders").attr("d", path(stateMesh));
   const selOutline = root.append("path").attr("class", "state-outline-sel");
   const gCities = root.append("g");
+  const gMayors = root.append("g").attr("class", "mayor-markers");
+  // Round crop for mayor photos on the map.
+  svg.append("defs").append("clipPath").attr("id", "mayor-clip").attr("clipPathUnits", "objectBoundingBox")
+    .append("circle").attr("cx", 0.5).attr("cy", 0.5).attr("r", 0.5);
   const tooltip = $("#tooltip");
+  const mayorOf = (c) => MAYORS[`${c[0]}|${c[1]}`];
 
   const statePaths = gStates.selectAll("path").data(stateFeatures).join("path")
     .attr("class", "state").attr("d", path)
@@ -63,9 +68,9 @@
     .on("mousemove", (e, f) => showTip(e, `${ELECTIONS.counties[f.id].n}, ${ELECTIONS.counties[f.id].st}`, countyLean[f.id]))
     .on("mouseleave", hideTip);
 
-  function showTip(e, title, lean) {
+  function showTip(e, title, lean, extra = "") {
     tooltip.hidden = false;
-    tooltip.innerHTML = `<strong>${esc(title)}</strong>${leanText(lean)}<div class="fine">R ${fmt(lean.R)}% · D ${fmt(lean.D)}% · I ${fmt(lean.I)}% · O ${fmt(lean.O)}%</div>`;
+    tooltip.innerHTML = `<strong>${esc(title)}</strong>${extra}${leanText(lean)}<div class="fine">R ${fmt(lean.R)}% · D ${fmt(lean.D)}% · I ${fmt(lean.I)}% · O ${fmt(lean.O)}%</div>`;
     const x = Math.min(e.clientX + 14, innerWidth - tooltip.offsetWidth - 8);
     tooltip.style.left = x + "px"; tooltip.style.top = e.clientY + 14 + "px";
   }
@@ -97,6 +102,19 @@
     gCities.selectAll("circle").attr("r", (c) => (2 + Math.sqrt(c[2]) / 260) / currentK);
     gCities.selectAll("text").style("font-size", `${11 / currentK}px`).attr("dx", 6 / currentK).attr("dy", 4 / currentK)
       .style("stroke-width", 3 / currentK);
+    // Mayor photos stay 22 px across on screen at any zoom.
+    const r = 11 / currentK;
+    gMayors.selectAll("g.mayor").each(function (c) {
+      const g = d3.select(this);
+      g.select("image").attr("x", c.xy[0] - r).attr("y", c.xy[1] - r).attr("width", 2 * r).attr("height", 2 * r);
+      g.select("circle").attr("cx", c.xy[0]).attr("cy", c.xy[1]).attr("r", r).style("stroke-width", 2 / currentK);
+    });
+    gCities.selectAll("text.has-mayor").attr("dx", 14 / currentK);
+  }
+
+  function cityTip(e, c) {
+    const m = mayorOf(c);
+    showTip(e, `${c[0]}, ${c[1]}`, cityLean(c.idx), m ? `<div>Mayor ${esc(m.name)} <span class="chip ${m.party}">${m.party}</span></div>` : "");
   }
 
   let colorMode = "states";
@@ -116,16 +134,37 @@
 
     const list = sel ? (citiesByState.get(sel) ?? []).filter((c) => c.xy) : [];
     const labelled = new Set(list.slice(0, 8).map((c) => c.idx));
+    for (const c of list) if (mayorOf(c)) labelled.add(c.idx); // every city with a mayor on file is labelled
     if (view.city != null) labelled.add(view.city);
     gCities.selectAll("circle").data(list, (c) => c.idx).join("circle")
       .attr("class", "city").classed("sel", (c) => c.idx === view.city)
       .attr("cx", (c) => c.xy[0]).attr("cy", (c) => c.xy[1])
       .on("click", (e, c) => { e.stopPropagation(); go({ level: "city", st: c[1], fips: c[5], city: c.idx }); })
-      .on("mousemove", (e, c) => showTip(e, `${c[0]}, ${c[1]}`, cityLean(c.idx)))
+      .on("mousemove", cityTip)
       .on("mouseleave", hideTip);
     gCities.selectAll("text").data(list.filter((c) => labelled.has(c.idx)), (c) => c.idx).join("text")
-      .attr("class", "city-label").attr("x", (c) => c.xy[0]).attr("y", (c) => c.xy[1]).text((c) => c[0]);
+      .attr("class", "city-label").classed("has-mayor", (c) => !!mayorOf(c))
+      .attr("x", (c) => c.xy[0]).attr("y", (c) => c.xy[1])
+      // At state level the photo identifies the mayor; zoomed into a county or city there is room for the name.
+      .text((c) => (mayorOf(c) && view.level !== "state" ? `${c[0]} · Mayor ${mayorOf(c).name}` : c[0]));
+    // Mayor photos (or a party-colored ring when there is no photo) on cities with a mayor on file.
+    gMayors.selectAll("g.mayor").data(list.filter((c) => mayorOf(c)), (c) => c.idx).join((enter) => {
+      const g = enter.append("g").attr("class", "mayor");
+      g.append("image").attr("clip-path", "url(#mayor-clip)").attr("preserveAspectRatio", "xMidYMin slice")
+        .on("error", function () { d3.select(this).style("display", "none"); }); // no broken-image icon; the ring stays
+      g.append("circle").attr("class", "mayor-ring");
+      return g;
+    })
+      .attr("data-party", (c) => mayorOf(c).party)
+      .each(function (c) {
+        const ph = M.photo(mayorOf(c));
+        d3.select(this).select("image").attr("href", ph?.src ?? null).style("display", ph?.src ? null : "none");
+      })
+      .on("click", (e, c) => { e.stopPropagation(); go({ level: "city", st: c[1], fips: c[5], city: c.idx }); })
+      .on("mousemove", cityTip)
+      .on("mouseleave", hideTip);
     gCities.selectAll("text").raise();
+    gMayors.raise(); // photos above the city dots
     sizeCities();
   }
 
@@ -346,10 +385,23 @@
         ${houseRows.map((d) => districtRow(st, d)).join("")}
         ${M.REDISTRICTED_2026.includes(st) ? `<p class="note">${esc(s.name)} adopted new congressional maps for 2026. District percentages here reflect the 2024 lines.</p>` : ""}
       </section>` : ""}
+      ${mayorsSection(citiesByState.get(st) ?? [], `Mayors in ${s.name}`)}
       <section><h3>Largest cities</h3>
         <ul class="link-list">${topCities.map((c) => `<li><button data-nav="city:${c.idx}">${esc(c[0])}</button>${miniLean(cityLean(c.idx))}</li>`).join("")}</ul>
         <p class="fine">Every county in ${esc(s.name)} is clickable on the map, and the city dots are clickable too.</p>
       </section>`;
+  }
+
+  // Mayors of the curated cities in a list, each expandable to a full profile.
+  function mayorsSection(cities, title) {
+    const rows = cities.map((c) => [c, mayorOf(c)]).filter(([, m]) => m);
+    if (!rows.length) return "";
+    return `<section><h3>${esc(title)}</h3>
+      ${rows.map(([c, m]) => `<details class="del-person"><summary>${face(withState(m, c[1]), "sm")}<span class="del-name">${esc(m.name)} <span class="chip ${m.party}">${m.party}</span></span>
+        <span class="del-sub">Mayor of ${esc(c[0])} · since ${m.since}${m.up2026 ? " · on the 2026 ballot" : ""}</span></summary>
+        ${leaderCard(withState(m, c[1]), `Mayor of ${c[0]}`, "mayor", { open: true })}
+        <p><button class="btn-ghost" data-nav="city:${c.idx}">Open ${esc(c[0])} on the map</button></p></details>`).join("")}
+      <p class="fine">Mayors are curated for about 85 of the largest U.S. cities; their photos also appear on the map.</p></section>`;
   }
 
   function districtRow(st, d) {
@@ -400,6 +452,7 @@
       ${leanBlock(l, note)}
       ${v ? `<p class="fine">2024 presidential: ${d3.format(",")(v[3])} votes · R ${fmt((100 * v[0]) / v[3])}% · D ${fmt((100 * v[1]) / v[3])}% · other ${fmt((100 * v[2]) / v[3])}%</p>` : ""}
       <section><h3>County leadership</h3>${countyLeaderBlock(fips)}</section>
+      ${mayorsSection(cities, "Mayors in this county")}
       ${cities.length ? `<section><h3>Cities in this county</h3><ul class="link-list">${cities.map((ct) => `<li><button data-nav="city:${ct.idx}">${esc(ct[0])}</button><span class="fine">${d3.format(",")(ct[2])}</span></li>`).join("")}</ul></section>` : ""}
       ${stateContext(c.st)}`;
   }
