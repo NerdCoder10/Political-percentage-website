@@ -112,7 +112,7 @@
       ${show("governor") ? `<h2 class="races-section-title">Governor</h2>${govs.length ? govs.map(raceCard).join("") : `<p class="hint">${st === "DC" ? "D.C. has a mayor, not a governor." : `${esc(gov?.name ?? "The governor")}'s seat is not on the 2026 ballot.`}</p>`}` : ""}
       ${show("senate") ? `<h2 class="races-section-title">U.S. Senate</h2>${sen.length ? sen.map(raceCard).join("") : `<p class="hint">${st === "DC" ? "D.C. has no senators." : `No ${esc(s.name)} Senate seat is on the 2026 ballot.`}</p>`}` : ""}
       ${show("house") ? `<h2 class="races-section-title">U.S. House</h2>${house.length ? [...house].sort(sortFn).map(raceCard).join("") : `<p class="hint">D.C. elects a non-voting delegate.</p>`}` : ""}
-      <p class="fine">Forecasts use the national climate set on the Midterms tab and no polls. Tap ☆ to follow a race; followed races appear under Following on the Midterms tab.</p>`;
+      <p class="fine">Forecasts use a neutral national lean (no tilt toward either party) and no public polls. Tap ☆ to follow a race; followed races appear under Following on the Midterms tab.</p>`;
 
     $("#races-state", root).addEventListener("change", (e) => P().setTrackedState(e.target.value));
     root.querySelectorAll("[data-race-filter]").forEach((b) => b.addEventListener("click", () => { filter = b.dataset.raceFilter; render(root); }));

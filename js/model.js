@@ -12,7 +12,7 @@
 
   // ---------------------------------------------------------------------------------
   // 0. SOURCED PUBLIC-OPINION DATA (data/polling.js)
-  // data/polling.js now supplies only non-poll facts: special-election results, primary-season
+  // data/polling.js now supplies only non-poll facts: primary-season
   // events and official indicator updates.
   // ---------------------------------------------------------------------------------
   const P = G.POLLING;
@@ -34,20 +34,12 @@
     }
   }
 
-  // National climate (points, D minus R) — built WITHOUT polls, from votes actually cast:
-  // the 2025–26 special-election swing against the 2024 presidential margin, discounted to 60%
-  // because special-election electorates exaggerate swings (the 2017–18 specials vs. the 2018 result),
-  // starting from the 2024 national presidential margin (R+1.5). The forecast slider can override it.
-  M.climateParts = (override) => {
-    const swing = P?.specialElections?.value ?? 0;
-    const fromSpecials = Math.round((0.6 * swing - 1.5) * 10) / 10;
-    if (override != null && override !== fromSpecials) {
-      return { parts: [{ key: "manual", label: "Set with the slider", value: override, weight: 1 }], value: override, manual: true };
-    }
-    return { parts: [{ key: "specials", label: `2025–26 special elections: Democrats ran ${swing} pts ahead of the 2024 baseline × 0.6, from R+1.5`, value: fromSpecials, weight: 1 }], value: fromSpecials };
-  };
-  G.NATIONAL_OPINION.climate = M.climateParts().value;
-  G.NATIONAL_OPINION.genericBallot = G.NATIONAL_OPINION.climate; // modeled from special elections, not polls
+  // National lean: NEUTRAL (owner's choice). The forecast assumes no national tilt toward either
+  // party — an even (50–50) national vote — so every race rests on its own evidence. The national
+  // environment is not estimated from special elections, polls or anything else.
+  M.climateParts = () => ({ parts: [{ key: "neutral", label: "Neutral national lean: no tilt toward either party", value: 0, weight: 1 }], value: 0 });
+  G.NATIONAL_OPINION.climate = 0;
+  G.NATIONAL_OPINION.genericBallot = 0;
 
   // Official statistics (data/generated/indicators.js, built by scripts/fetch-indicators.mjs)
   // replace the curated approximations wherever an agency published a value.
@@ -414,7 +406,7 @@
   // For each race, an expected Democratic margin (points) is built from:
   //   baseline     partisan lean of the jurisdiction (Senate/Governor: state lean with neutral
   //                climate; House: 2024 House result blended with the state vote)
-  //   climate      (special-election climate − 2024 House popular vote) × elasticity
+  //   climate      (neutral national lean, an even vote − 2024 House popular vote) × elasticity
   //   incumbency   +2.5 Senate / +3 Governor for a running incumbent; House baselines already
   //                include it, so open House seats subtract 3 from the departing party
   //   (no polls: head-to-head polls, the generic ballot and approval ratings are not used)
@@ -572,10 +564,10 @@
   // ---- 2026 primary ballots: the "poll" that reaches the most voters ----
   // Real ballots cast in each race's primaries, summed by party. Used only where they reach at least
   // 7% of the area's 2024 electorate. Primary turnout runs high for whichever party is more
-  // energized everywhere at once, and the national environment is already measured from special
-  // elections, so only each race's turnout gap RELATIVE to the average race counts (the same
-  // correction for both parties), at half strength:
-  //   margin = partisan baseline + climate + 0.5 × (race's primary gap − average gap of its type)
+  // energized everywhere at once; the forecast keeps a neutral national lean, so only each race's
+  // turnout gap RELATIVE to the average race counts (the same correction for both parties), at half
+  // strength:
+  //   margin = partisan baseline + neutral lean + 0.5 × (race's primary gap − average gap of its type)
   // Uncertainty: top-two primaries (all voters, one ballot) σ 5; both parties contested σ 8;
   // otherwise σ 11, because an uncontested primary draws fewer of that party's voters.
   M.PRIMARY_MIN_SHARE = 7;
@@ -611,7 +603,7 @@
   // one formula for both parties:
   //   support  = governor on the 2026 ballot: their 2026 forecast margin; otherwise their own last
   //              general election (actual votes; the party's lean in the state if they were never
-  //              elected); President: the national climate from special elections
+  //              elected); President: the neutral national lean (even)
   //   economy  = governors: −1.5 × (state − U.S. unemployment) + 0.5 × (state − U.S. GDP growth), max ±4
   //   approval = 95% × (50 + support ÷ 2 + economy)        (5% "not sure", as in real approval polls)
   //   cross-partisan appeal = support ÷ 2 + economy − party baseline ÷ 2
@@ -625,7 +617,7 @@
     const l = nat ? M.nationLean({ env: 0 }) : M.stateLean(code, { env: 0 });
     const lead = dir * (l.D - l.R);
     let support = lead, basis = `the ${M.partyName[party] ?? ""} lean of ${nat ? "the nation" : M.states[code].name}`;
-    if (nat) { support = dir * G.NATIONAL_OPINION.climate; basis = "the national climate measured from 2025–26 special elections"; }
+    if (nat) { support = dir * G.NATIONAL_OPINION.climate; basis = "the neutral national lean (an even national vote)"; }
     else {
       govRaces ??= Object.fromEntries(M.forecast({ noSim: true }).races.filter((r) => r.office === "governor").map((r) => [r.state, r]));
       const r = govRaces[code];
@@ -674,7 +666,7 @@
       // Governor races split from federal partisanship far more often (Scott, Ayotte, Beshear),
       // so their fundamentals carry more uncertainty.
       const fundSigma = r.office === "governor" ? 10 : r.sigma;
-      const signals = [{ key: "fundamentals", side: "I", label: "Fundamentals (vote history, special-election climate, incumbency, qualifications, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
+      const signals = [{ key: "fundamentals", side: "I", label: "Fundamentals (vote history, neutral national lean, incumbency, qualifications, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
       // Head-to-head polls are deliberately NOT used (owner's choice): the forecast relies on votes
       // already cast, money, the economy, expert ratings and prediction markets.
       const pr = P?.races[r.id];

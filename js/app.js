@@ -301,7 +301,7 @@
     const govs = d3.rollup(Object.entries(GOVERNORS).filter(([k]) => k !== "DC"), (v) => v.length, ([, g]) => g.party);
     return `<div class="kicker">National</div><h2>United States</h2>
       <p class="hint">Click any state to drill down to its counties and cities. Use the tabs above for the 2026 midterm forecast and the scoring method.</p>
-      ${leanBlock(l, `Nationwide popular-vote orientation. Recent presidential results are weighted and adjusted for the national climate measured from special elections (${gbLabel(NATIONAL_OPINION.climate)}).`)}
+      ${leanBlock(l, `Nationwide popular-vote orientation. Recent presidential results are weighted and set to a neutral national lean (no tilt toward either party).`)}
       ${rubricBlock("US", "Federal government, scored with the same goalposts as the states")}
       <section><h3>Balance of power</h3>
         <ul class="link-list">
@@ -580,12 +580,8 @@
   }
 
   // ------------------------------------------------------------------ midterms tab
-  const gbEl = $("#gb");
   const gbLabel = (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`);
   let officeFilter = "all", openRace = null;
-  gbEl.value = NATIONAL_OPINION.climate;
-  gbEl.addEventListener("input", () => { forecast = M.forecast({ climate: +gbEl.value }); races = raceById(); renderMidterms(); });
-  $("#gb-reset").addEventListener("click", () => { gbEl.value = NATIONAL_OPINION.climate; gbEl.dispatchEvent(new Event("input")); });
 
   // ---- Followed races: saved on this device (localStorage), shown with the "Following" filter.
   const FOLLOW_KEY = "pp-following";
@@ -604,7 +600,6 @@
   }));
 
   function renderMidterms() {
-    $("#gb-label").textContent = gbLabel(+gbEl.value) + (+gbEl.value === NATIONAL_OPINION.climate ? " (special-election estimate)" : " (your setting)");
     const c = forecast.control;
     const gov = forecast.races.filter((r) => r.office === "governor");
     const notUp = Object.entries(GOVERNORS).filter(([k, g]) => k !== "DC" && g.status2026 === "not-up");
@@ -620,9 +615,9 @@
       <div class="card"><div class="label">Governorships after 2026</div>
         <div class="big"><span class="txt-D">${govD} D</span> · <span class="txt-R">${50 - govD} R</span></div>
         ${split(govD / 50)}<div class="sub">${gov.length} races on the ballot; expected value from race probabilities.</div></div>
-      <div class="card"><div class="label">National climate</div>
-        <div class="big">${gbLabel(forecast.climate.value)}</div>
-        <div class="sub">${forecast.climate.parts.map((x) => `${esc(x.label)}: <b>${gbLabel(x.value)}</b>`).join("<br>")}<br>No public polls are used.<br>Swing vs. 2024 House vote: <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>.</div></div>`;
+      <div class="card"><div class="label">National lean</div>
+        <div class="big">Neutral</div>
+        <div class="sub">No national tilt toward either party is assumed: an even (50–50) national vote. Each race rests on its own evidence. No public polls are used.<br>For reference, the 2024 House vote was ${gbLabel(Math.round(M.houseNationalMargin24 * 10) / 10)}.</div></div>`;
     renderRaceTable();
   }
 
@@ -743,7 +738,7 @@
       <h4 class="detail-h">Fundamentals breakdown</h4>
       <div class="factors">
         <div>Partisan baseline${r.pvi != null ? ` (Cook PVI ${r.pvi > 0 ? "D" : r.pvi < 0 ? "R" : "EVEN"}${r.pvi ? "+" + Math.abs(r.pvi) : ""})` : ""}<b>${f(r.baseline)}</b></div>
-        <div>National climate<b>${f(r.climate)}</b></div>
+        <div>Neutral national lean<b>${f(r.climate)}</b></div>
         <div>Incumbency<b>${f(r.incumbency)}</b></div>
         <div>Approval (public opinion)<b>${f(r.approvalEffect)}</b></div>
         <div>Qualifications<b>${f(r.qualityEffect)}</b></div>
@@ -806,7 +801,7 @@
       <p>The algorithm uses real popular-vote returns: 2016, 2020 and 2024 presidential results for all ${Object.keys(ELECTIONS.counties).length.toLocaleString()} counties, plus 2024 U.S. House results for all 435 districts. For any area:</p>
 <pre class="formula">base      = 0.6·share₂₀₂₄ + 0.3·share₂₀₂₀ + 0.1·share₂₀₁₆          (for R, D and non-major votes)
 momentum  = + 0.2 · (share₂₀₂₄ − share₂₀₂₀)                          (damped trend continuation)
-climate   = ± ½ · (generic ballot − 2024 House vote margin) · elasticity
+lean      = ± ½ · (neutral national vote, Even − 2024 House vote margin) · elasticity
 elasticity= 1 − ½·|D − R|                                            (lopsided places move less)
 soft I    = 7% · max(0, 1 − |D − R| / 0.6)                            (ticket-splitters, taken from R & D)
 Independent = 0.6 · non-major vote + soft I
@@ -824,11 +819,11 @@ Other       = 0.4 · non-major vote + 0.4%
       <p>Qualification score (0–100) = years in elected office × 3 (max 45) + 12 per prior public office (max 35) + 6 per relevant professional credential such as law, military, medicine, business or education (max 15) + 5 for a party-leadership role. Possible next moves come from rules that look at term limits, age, the office's next election, open seats in the state, how safe the seat is, and the 2026 forecast.</p>
 
       <h2>4. 2026 midterm forecast</h2>
-      <p class="callout"><b>No public polls are used.</b> Head-to-head race polls, the generic congressional ballot and approval polls are all left out. The forecast leans instead on measures where at least 7% of voters took part. Those are the actual 2026 primary ballots in each race, the 2025–26 special elections and each governor's own last election. They are combined with vote history, money, the economy, expert ratings and prediction markets. Ratings and markets are judgments made by others, and some of those forecasters do look at polls.</p>
+      <p class="callout"><b>No public polls are used.</b> Head-to-head race polls, the generic congressional ballot and approval polls are all left out. The forecast leans instead on measures where at least 7% of voters took part. Those are the actual 2026 primary ballots in each race and each governor's own last election. The national lean is set to neutral. They are combined with vote history, money, the economy, expert ratings and prediction markets. Ratings and markets are judgments made by others, and some of those forecasters do look at polls.</p>
       <p>Each kind of evidence becomes an estimated Democratic margin with an uncertainty. The evidence is sorted into <b>three equal groups</b>: <b>Democratic-leaning sources</b>, <b>independent sources</b> and <b>Republican-leaning sources</b>. Each group counts for exactly one third of the forecast.</p>
 <pre class="formula">Fundamentals (σ 6–7; governors 10)                               → independent group
   = partisan baseline (vote history; Cook PVI on 2026 House lines)
-  + national climate × elasticity
+  + neutral national lean (an even national vote) × elasticity
   + incumbency (Senate ±2.5, Governor ±3; open House seats −3 for the departing party)
   + qualifications ((score − 50) × 0.04, max ±2)
   + campaign money (2 × ln(D receipts ÷ R receipts), FEC, max ±4)
@@ -838,7 +833,7 @@ Expert ratings (σ 6; 10 if every rater in the group says Safe)  → by outlet (
   each group's raters averaged: Safe/Solid ±15 · Likely ±8 · Lean ±4 · Tilt ±1.5 · Toss-up 0
 Prediction markets (σ 5 each): Kalshi and Polymarket, Φ⁻¹(price) × 6 → independent group
 2026 primary ballots (actual votes; only where ≥ 7% of the 2024 electorate voted) → independent group
-  margin = baseline + climate + 0.5 × (race's D-minus-R primary-ballot gap − the average race's gap)
+  margin = baseline + neutral lean + 0.5 × (race's D-minus-R primary-ballot gap − the average race's gap)
   σ 5 top-two primaries · 8 both parties contested · 11 otherwise (an uncontested primary draws fewer)
 Governors running again: + personal vote = ½ × (their last election margin − their party's
   presidential margin in the state that cycle), from actual votes
@@ -867,7 +862,7 @@ Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presiden
         <tbody>${["D", "I", "R"].map((side) => Object.values(M.SOURCE_LEAN).filter((x) => x.side === side).map((x) => `<tr><td><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.name)}</a></td><td><span class="lean-tag ${side}">${esc(M.SIDE_LABEL[side].replace(" sources", ""))}</span></td><td>${esc(x.basis)}</td></tr>`).join("")).join("")}
           <tr><td>Kalshi · Polymarket</td><td><span class="lean-tag I">Independent</span></td><td>Prediction markets: prices set by traders, not an outlet</td></tr>
           <tr><td>Election results · Census · BLS · BEA · FEC</td><td><span class="lean-tag I">Independent</span></td><td>Official statistics (the fundamentals)</td></tr></tbody></table></div>
-      <p><b>National climate</b> uses actual votes, not polls. Across the 2025–26 special elections, Democrats ran ${POLLING.specialElections?.value ?? "—"} points ahead of each district's 2024 presidential result. That swing is discounted to 60%, because special-election turnout exaggerates swings (the 2017–18 specials versus the 2018 result), and starts from the 2024 national margin of R+1.5. Result: <b>${gbLabel(M.climateParts().value)}</b>. Move the slider on the forecast tab to try your own value.</p>
+      <p><b>Neutral national lean.</b> The forecast assumes no national tilt toward either party, meaning an even (50–50) national vote. No national environment is estimated from special elections, polls or anything else. Each race moves from its 2024 baseline only by the difference between an even vote and the 2024 House vote (${gbLabel(Math.round(M.houseNationalMargin24 * 10) / 10)}), scaled by how competitive the area is.</p>
       <p><b>Who is running:</b> Ballotpedia's list of members not seeking re-election marks open seats. Nominees come from prediction markets (Kalshi, Polymarket) and each party's leading fundraiser in FEC filings.</p>
       <p><b>Following races:</b> tap ☆ on any race to follow it. The <b>Following</b> filter then shows only your races. The list is saved on your device.</p>
       <p>Chamber control comes from 20,000 simulated elections. Each simulation draws one shared national error (σ 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties.</p>
@@ -876,7 +871,7 @@ Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presiden
       <p class="callout"><b>No public opinion polls are used anywhere on this site.</b> Even the largest opinion polls reach well under 0.1% of voters. Instead, the site relies on measures where <b>at least 7% of voters</b> took part (actual ballots), and it predicts the poll numbers itself.</p>
       <ol>
         <li><b>2026 primary ballots</b> (section 4): real votes in every race's primaries, used only where they reach 7% of the 2024 electorate. Today the range is ${(() => { const xs = forecast.races.filter((r) => r.primary).map((r) => r.primary.share); return xs.length ? `${fmt(Math.min(...xs))}–${fmt(Math.max(...xs))}%` : "—"; })()} of voters across ${forecast.races.filter((r) => r.primary).length} races.</li>
-        <li><b>2025–26 special elections</b>: the national climate (${gbLabel(NATIONAL_OPINION.climate)}). It stands in for the "generic ballot" poll.</li>
+        <li><b>A neutral national lean</b> takes the place of the "generic ballot" poll: an even national vote, with no tilt toward either party.</li>
         <li><b>Each governor's own last general election</b>: their personal vote and modeled approval.</li>
         <li><b>Our own modeled polls.</b> Approval ratings are predicted with one formula for both parties, shown below. Each race shows a modeled likely-voter poll, which is the predicted vote with the undecided share that the race's uncertainty implies.</li>
         <li><b>Equal thirds.</b> Democratic-leaning, independent and Republican-leaning sources each count one third of every race forecast (section 4), so neither side's outlets can outvote the other.</li>
@@ -884,7 +879,7 @@ Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presiden
 <pre class="formula">Modeled approval = 95% × (50 + support ÷ 2 + economy)            (5% "not sure")
   support  = governor on the 2026 ballot: their 2026 forecast margin
              otherwise: their own last general-election margin (actual votes)
-             President: the national climate from special elections (${gbLabel(NATIONAL_OPINION.climate)})
+             President: the neutral national lean (an even national vote)
   economy  = governors: −1.5 × (state − U.S. unemployment) + 0.5 × (state − U.S. GDP growth), max ±4
 Cross-partisan appeal = support ÷ 2 + economy − the party's baseline lean ÷ 2</pre>
       <div class="table-wrap"><table class="method-table">
