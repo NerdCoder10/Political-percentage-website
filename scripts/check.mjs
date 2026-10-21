@@ -35,6 +35,11 @@ for (const r of f.races.filter((x) => x.thirds)) {
   const wD = r.thirds.find((t) => t.side === "D")?.weight ?? 0, wR = r.thirds.find((t) => t.side === "R")?.weight ?? 0;
   if (Math.abs(wD - wR) > 1e-9) check(false, `${r.id} unbalanced partisan weights D ${wD} R ${wR}`);
 }
+// Predicted vote: shares add to 100 and the range brackets the estimate.
+for (const r of f.races) {
+  const v = r.vote;
+  if (!v || Math.abs(v.D + v.R + v.O - 100) > 0.15 || !(v.lo <= v.D && v.D <= v.hi) || v.D <= 0 || v.R <= 0) check(false, `${r.id} predicted vote ${JSON.stringify(v)}`);
+}
 check(Object.values(M.SOURCE_LEAN).some((x) => x.side === "D") && Object.values(M.SOURCE_LEAN).some((x) => x.side === "R"), "source groups need both sides");
 
 if (process.argv.includes("-v")) {

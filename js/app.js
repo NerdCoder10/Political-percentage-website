@@ -560,7 +560,7 @@
   globalThis.openState = (st) => { showTab("map"); go({ level: "state", st }); };
   // Shared helpers for the Races tab (js/races.js).
   globalThis.PP = {
-    getForecast: () => forecast, leaderCard, esc, fmt, evidenceTable, ratingsLine, marketsLine, face, matchup, governorOf: (st) => GOVERNORS[st] && withState(GOVERNORS[st], st), govTitle, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
+    getForecast: () => forecast, leaderCard, esc, fmt, evidenceTable, ratingsLine, marketsLine, voteTable, shortVote, face, matchup, governorOf: (st) => GOVERNORS[st] && withState(GOVERNORS[st], st), govTitle, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
     getTrackedState: () => trackedState, setTrackedState, openDelegation,
     isFollowing: (id) => following.has(id),
     toggleFollow: (id) => { following.has(id) ? following.delete(id) : following.add(id); saveFollowing(); updateFollowCount(); },
@@ -658,7 +658,7 @@
         <td>${esc(r.incumbent.name)} <span class="chip ${r.incumbent.party}">${r.incumbent.party}</span></td>
         <td>${seatText}</td>
         <td><span class="pill ${cls}">${r.rating.label.replace(" D", r.challenger === "I" ? " Ind" : " D")}</span></td>
-        <td><div class="prob"><span class="l">${pD}%</span><span class="bar" role="img" aria-label="${dLabel} ${pD}%, R ${100 - pD}%"><i style="width:${pD}%;background:var(--${r.challenger === "I" ? "ind" : "dem"})"></i><i style="width:${100 - pD}%;background:var(--rep)"></i></span><span class="r">${100 - pD}%</span></div></td>
+        <td><div class="prob"><span class="l">${pD}%</span><span class="bar" role="img" aria-label="${dLabel} ${pD}%, R ${100 - pD}%"><i style="width:${pD}%;background:var(--${r.challenger === "I" ? "ind" : "dem"})"></i><i style="width:${100 - pD}%;background:var(--rep)"></i></span><span class="r">${100 - pD}%</span></div><div class="vote-line">Vote: ${shortVote(r)}</div></td>
       </tr>`;
       return row + (openRace === r.id ? raceDetail(r) : "");
     }).join("");
@@ -700,6 +700,25 @@
     return parts.length ? `<p class="fine">Prediction markets: ${parts.join("; ")}.</p>` : "";
   }
 
+  // Predicted popular vote: shares, 80% range and estimated votes for each side.
+  function shortVote(r) { return `${r.challenger === "I" ? "I" : "D"} ${fmt(r.vote.D)}% · R ${fmt(r.vote.R)}% · other ${fmt(r.vote.O)}%`; }
+  function voteTable(r) {
+    const v = r.vote;
+    const n = r.nominees;
+    const dParty = r.challenger === "I" ? "I" : "D";
+    const name = (side) => (n?.[side] ? esc(n[side].replace(/\s*\(inc\.\)/, "")) : side === "R" ? "Republican candidate" : dParty === "I" ? "Independent candidate" : "Democratic candidate");
+    const two = 100 - v.O;
+    const votes = (x) => (x == null ? "—" : `≈ ${Math.round(x).toLocaleString("en-US")}`);
+    return `<div class="table-wrap"><table class="signals vote-table">
+        <thead><tr><th>Candidate</th><th class="num">Predicted vote</th><th class="num">80% range</th>${v.total ? `<th class="num">Est. votes</th>` : ""}</tr></thead>
+        <tbody>
+          <tr><td>${name("D")} <span class="chip ${dParty}">${dParty}</span></td><td class="num"><b>${fmt(v.D)}%</b></td><td class="num">${fmt(v.lo)}–${fmt(v.hi)}%</td>${v.total ? `<td class="num">${votes(v.votesD)}</td>` : ""}</tr>
+          <tr><td>${name("R")} <span class="chip R">R</span></td><td class="num"><b>${fmt(v.R)}%</b></td><td class="num">${fmt(two - v.hi)}–${fmt(two - v.lo)}%</td>${v.total ? `<td class="num">${votes(v.votesR)}</td>` : ""}</tr>
+          <tr><td>Other candidates</td><td class="num">${fmt(v.O)}%</td><td class="num"></td>${v.total ? `<td class="num">${votes(v.votesO)}</td>` : ""}</tr>
+        </tbody></table></div>
+      <p class="fine">Predicted margin ${marginText(v.margin)}.${v.total ? ` Expected turnout ≈ ${v.total.toLocaleString("en-US")} votes (0.75 × the 2024 vote, the usual midterm drop-off).` : ""} The 80% range covers the outcome in 4 of 5 simulated elections.</p>`;
+  }
+
   function raceDetail(r) {
     const f = (v) => `${v > 0 ? "D+" : v < 0 ? "R+" : "±"}${fmt(Math.abs(v))}`;
     const money = (x) => (x ? `${esc(x.name)} $${(x.receipts / 1e6).toFixed(x.receipts >= 1e6 ? 1 : 2)}M raised` : "—");
@@ -708,6 +727,8 @@
       <p class="fine">Incumbent: <b>${esc(r.incumbent.name)}</b> (${esc(r.incumbent.party)}) · ${r.status === "open" ? "open seat" : r.status === "uncertain" ? "incumbent's plans uncertain" : "incumbent running"}</p>
       ${matchup(r)}
       ${r.note ? `<p>${esc(r.note)}</p>` : ""}
+      <h4 class="detail-h">Predicted popular vote</h4>
+      ${voteTable(r)}
       <h4 class="detail-h">How the evidence combines (one third each: Democratic-leaning, independent, Republican-leaning)</h4>
       ${evidenceTable(r)}
       <h4 class="detail-h">Fundamentals breakdown</h4>
@@ -814,6 +835,17 @@ If fundamentals sit more than 8 pts from the ratings/markets average, their σ i
 Forecast margin = ⅓ Democratic-leaning + ⅓ independent + ⅓ Republican-leaning
 Forecast σ      = σ of that average, with the groups' errors 50% correlated (minimum 3.5)
 P(win) = Φ(forecast margin ÷ forecast σ)</pre>
+      <p><b>Predicted popular vote.</b> Each race also gets a vote-share forecast.</p>
+<pre class="formula">Vote margin   = the same equal-thirds blend, except a signal at the top of its scale
+                (a Safe rating ±15, a 95%+ market) is raised to the fundamentals' margin
+                when they agree on the winner — so landslides aren't pulled toward 50–50
+Other share   = 2024 third-party vote in the district's House race (when both parties ran;
+                not in NY and CT, where fusion lines count major-party votes as "other"),
+                otherwise in the state's presidential vote; between 1% and 10%
+D share       = (100 − other) ÷ 2 + vote margin ÷ 2         R share = 100 − other − D share
+80% range     = vote margin ± 1.28 σ
+Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presidential = 0.83;
+                2022 ÷ 2020 = 0.68)          Est. votes = turnout × share</pre>
       <p><b>Keeping it balanced.</b> If only one partisan side rates a race, using that side alone would tilt the result. In that case both partisan groups are set aside and the independent group decides the race. House seats that no forecaster rates as competitive are independent-only.</p>
       <p><b>How each outlet is classified.</b> An outlet is <i>Democratic-leaning</i> or <i>Republican-leaning</i> when <a href="https://www.allsides.com/media-bias/ratings" target="_blank" rel="noopener">AllSides</a> or <a href="https://mediabiasfactcheck.com/" target="_blank" rel="noopener">Media Bias/Fact Check</a> rates it left or right of center, and neither rates it the other way. Everything else is <i>independent</i>: nonpartisan handicappers, data services, prediction markets and official statistics. Head-to-head polls are not used in either group.</p>
       <div class="table-wrap"><table class="method-table">

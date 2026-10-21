@@ -541,6 +541,43 @@
   };
   M.sourceLean = (by) => M.SOURCE_LEAN[String(by).replace(/\.$/, "")] ?? { name: by, side: "I", basis: "Not rated left or right" };
 
+  // ---- Predicted popular vote ----
+  // Vote margin: the same equal-thirds blend as the win probability, except that a signal sitting at
+  // the top of its scale (a "Safe" rating is ±15, a 95%+ market ±9.8) only says "at least this much",
+  // so there the larger of it and the fundamentals' margin is used — landslides are not pulled to 50-50.
+  // Third-party share: the area's 2024 non-major vote (the district's House race when both parties
+  // ran, otherwise the state's presidential vote), between 1% and 10%.
+  // Turnout: midterms draw about 0.75 of the previous presidential vote (2018 House vote ÷ 2016
+  // presidential 0.83, 2022 ÷ 2020 0.68), applied to the area's 2024 vote.
+  M.MIDTERM_TURNOUT = 0.75;
+  const MARKET_SAFE = 9.8; // a 95%+ market price, Φ⁻¹(0.95) × 6
+  const stateVotes24 = {};
+  const votes24 = (st) => (stateVotes24[st] ??= Object.values(E().counties).reduce((a, c) => a + (c.st === st ? c.v24?.[3] ?? 0 : 0), 0));
+  M.predictedVote = (r) => {
+    let vm = 0;
+    for (const t of r.thirds) for (const sg of r.signals.filter((x) => x.side === t.side)) {
+      const atCeiling = (sg.key.startsWith("ratings") && Math.abs(sg.margin) >= 15) || ((sg.key === "markets" || sg.key === "polymarket") && Math.abs(sg.margin) >= MARKET_SAFE);
+      const m = atCeiling && Math.sign(sg.margin) === Math.sign(r.fundamentals) ? Math.sign(sg.margin) * Math.max(Math.abs(sg.margin), Math.abs(r.fundamentals)) : sg.margin;
+      vm += t.weight * sg.within * m;
+    }
+    const h = r.office === "house" && !r.redistricted ? G.HOUSE24[`${r.state}-${r.district}`] : null;
+    const contested = h && h.R > 0 && h.D > 0 && !h.unopposed;
+    // New York and Connecticut count major-party candidates' votes on minor-party lines (Working
+    // Families, Conservative) separately, so their House "other" vote isn't third-party support.
+    const fusion = ["NY", "CT"].includes(r.state);
+    const O = round1(clamp(100 * (contested && !fusion ? (h.I + h.O) / h.total : M.stateShares(r.state).s24?.o ?? 0.02), 1, 10));
+    const two = 100 - O;
+    const dShare = (m) => clamp(two / 2 + m / 2, 0.5, two - 0.5);
+    const D = round1(dShare(vm));
+    const z = 1.2816 * r.sigma; // 80% range
+    const st = G.STATES_META.find((x) => x[1] === r.state);
+    const base = r.office === "house" ? (contested ? h.total : votes24(r.state) / Math.max(1, st?.[3] ?? 1)) : r.office === "mayor" ? null : votes24(r.state);
+    const total = base ? Math.round((base * M.MIDTERM_TURNOUT) / 1000) * 1000 : null;
+    const out = { margin: round1(vm), D, R: round1(two - D), O, lo: round1(dShare(vm - z)), hi: round1(dShare(vm + z)), total };
+    if (total) { out.votesD = Math.round((total * out.D) / 100); out.votesR = Math.round((total * out.R) / 100); out.votesO = total - out.votesD - out.votesR; }
+    return out;
+  };
+
   M.forecast = (opts = {}) => {
     const climate = M.climateParts(opts.climate);
     const swing = climate.value - M.houseNationalMargin24;
@@ -630,6 +667,7 @@
       r.pD = M.normCdf(r.margin / r.sigma);
       r.rating = M.rating(r.pD);
       r.elasticity = el;
+      r.vote = M.predictedVote(r);
       races.push(r);
     };
 

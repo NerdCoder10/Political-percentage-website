@@ -39,7 +39,9 @@
       </div>
       ${n?.fromMoney ? `<div class="race-meta">Leading fundraisers: ${esc(n.D)} (D) · ${esc(n.R)} (R)</div>` : P().matchup(r)}
       <div class="prob"><span class="l">${pD}%</span><span class="bar" role="img" aria-label="${dLab} ${pD}%, R ${100 - pD}%"><i style="width:${pD}%;background:var(--${r.challenger === "I" ? "ind" : "dem"})"></i><i style="width:${100 - pD}%;background:var(--rep)"></i></span><span class="r">${100 - pD}%</span></div>
+      <div class="vote-line">Predicted vote: <b>${P().shortVote(r)}</b>${r.vote.total ? ` · ≈ ${r.vote.total.toLocaleString("en-US")} votes` : ""}</div>
       ${r.note ? `<p class="fine">${esc(r.note)}</p>` : ""}
+      <details><summary>Predicted popular vote</summary>${P().voteTable(r)}</details>
       <details><summary>Evidence behind this forecast</summary>
         ${P().evidenceTable(r)}
         <div class="factors">
