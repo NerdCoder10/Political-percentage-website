@@ -2,7 +2,7 @@
 
 An interactive U.S. political map. It needs no build step: open `index.html` in a browser.
 
-- **Map & Leaders tab.** A full-screen U.S. map colored red or blue by each state's current political lean. Toss-ups (a lean within 3 points of even) are gray. Click a state, then any county or city dot, to drill down. Zoomed into a state, cities with a mayor on file show the mayor's photo (party-colored ring), and the state and county panels list their mayors. The **Zoom to a city** menu jumps one level further in, to a city and its mayor (or "No mayor there" when none is on file). Every level shows:
+- **Map & Leaders tab.** A full-screen U.S. map colored red or blue by each state's current political lean. Toss-ups (a lean within 3 points of even) are gray. Click a state, then any county or city dot, to drill down. Zoomed into a state, cities with a mayor on file show the mayor's photo (party-colored ring), and the state and county panels list their mayors. The **Zoom to a city or town** menu, or tapping any dot, zooms in to that place and shows its local leader. That is the mayor, or for New England towns the first selectman, selectboard chair or town manager; places with none listed say "No mayor there". Every level shows:
   - **Republican / Democratic / Independent / Other popular-vote percentages**, from the lean algorithm.
   - **Current leaders** (President and national leadership, governors, all 100 senators, all 435 House members, mayors, county executives), each with a **short biography, qualification score and possible next moves**.
   - The **1,000-point Government Performance Rubric** for the nation and every state.
@@ -146,6 +146,15 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 - **Turnout:** 0.75 × the 2024 vote, the average midterm drop-off in 2018 and 2022.
 
 **Following races:** tap ☆ next to any race, then the **Following** filter shows only your races. The list is saved on the device.
+
+## Local leaders and New England towns
+
+`scripts/fetch-local-leaders.mjs` (`npm run fetch:local`) writes `data/generated/local.js`.
+
+- **Towns:** every New England town and city (CT, MA, RI, VT, NH, ME) comes from the Census Bureau's 2024 county-subdivision gazetteer and becomes a map place. Each town is placed in its county using the map's own county shapes. Town leans use the county's vote, because town-level results aren't compiled nationally.
+- **Leaders:** for those towns and the 1,000 largest cities, the head of local government comes from each place's Wikipedia infobox. That is the mayor, or otherwise the first selectman, selectboard chair, supervisor, council president or town manager, with party when listed.
+- **Curated mayors:** the ~85 curated mayors in `data/leaders.js` keep their full bios and photos.
+- **Refresh:** each place is re-checked every 30 days. Scheduled runs look up at most 150 places.
 
 ## Photos
 
