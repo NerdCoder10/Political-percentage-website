@@ -539,7 +539,8 @@
   M.predictedVote = (r) => {
     let vm = 0;
     for (const t of r.thirds) for (const sg of r.signals.filter((x) => x.side === t.side)) {
-      const atCeiling = (sg.key.startsWith("ratings") && Math.abs(sg.margin) >= 15) || ((sg.key === "markets" || sg.key === "polymarket") && Math.abs(sg.margin) >= MARKET_SAFE);
+      const unadj = sg.margin + M.NONRESPONSE.value; // the ceilings apply before the non-responder adjustment
+      const atCeiling = (sg.key.startsWith("ratings") && Math.abs(unadj) >= 15) || ((sg.key === "markets" || sg.key === "polymarket") && Math.abs(unadj) >= MARKET_SAFE);
       const m = atCeiling && Math.sign(sg.margin) === Math.sign(r.fundamentals) ? Math.sign(sg.margin) * Math.max(Math.abs(sg.margin), Math.abs(r.fundamentals)) : sg.margin;
       vm += t.weight * sg.within * m;
     }
@@ -644,6 +645,23 @@
     return round1(0.5 * (own - pres)); // D-minus-R points, like every other forecast term
   };
 
+  // ---- Voters who don't answer polls ----
+  // Expert ratings and prediction markets lean on polls, and polls miss the voters who never answer
+  // them. Their recent net miss, measured from actual results (Silver Bulletin, statistical bias of
+  // the polling averages; + = polls overstated Democrats): 2016 +3.0, 2018 −0.5, 2020 +4.7,
+  // 2022 +0.8, 2024 +2.8. 2026 is a midterm, so the two midterms count twice:
+  //   (3.0 − 2×0.5 + 4.7 + 2×0.8 + 2.8) ÷ 7 = 1.6 points.
+  // That amount is taken off the poll-informed signals (ratings and markets) only — vote history,
+  // primary ballots and other actual votes already include every voter. If polls had missed
+  // Republicans instead, the same rule would move the forecast the other way.
+  M.NONRESPONSE = {
+    cycles: [{ year: 2016, bias: 3.0, weight: 1 }, { year: 2018, bias: -0.5, weight: 2 }, { year: 2020, bias: 4.7, weight: 1 }, { year: 2022, bias: 0.8, weight: 2 }, { year: 2024, bias: 2.8, weight: 1 }],
+    source: "https://www.natesilver.net/p/actually-sometimes-polls-underestimate",
+  };
+  M.NONRESPONSE.value = round1(M.NONRESPONSE.cycles.reduce((a, c) => a + c.bias * c.weight, 0) / M.NONRESPONSE.cycles.reduce((a, c) => a + c.weight, 0));
+  const NR = () => M.NONRESPONSE.value;
+  const nrNote = () => ` (${NR() > 0 ? "−" : "+"}${Math.abs(NR())} for voters who don't answer polls)`;
+
   M.forecast = (opts = {}) => {
     const climate = M.climateParts(opts.climate);
     const swing = climate.value - M.houseNationalMargin24;
@@ -679,7 +697,7 @@
           const xs = rt.ratings.filter((x) => M.sourceLean(x.by).side === side);
           if (!xs.length) continue;
           const allSafe = xs.every((x) => Math.abs(x.margin) === 15);
-          signals.push({ key: `ratings-${side}`, side, label: `Expert ratings: ${xs.map((x) => M.sourceLean(x.by).name).join(", ")}`, margin: round1(mean(xs.map((x) => x.margin))), sigma: allSafe ? 10 : 6, discount: 0.6 });
+          signals.push({ key: `ratings-${side}`, side, label: `Expert ratings: ${xs.map((x) => M.sourceLean(x.by).name).join(", ")}${nrNote()}`, margin: round1(mean(xs.map((x) => x.margin)) - NR()), sigma: allSafe ? 10 : 6, discount: 0.6 });
         }
       }
       const forState = (tbl) => tbl?.[r.id] ?? (r.office === "senate" ? tbl?.[r.id.replace(/-S$/, "")] : null); // markets list specials under the state
@@ -688,11 +706,11 @@
       const sideName = r.challenger === "I" ? "Osborn" : "D";
       if (mk) {
         r.market = mk;
-        signals.push({ key: "markets", side: "I", label: `Prediction market (Kalshi: ${Math.round(mk.pD * 100)}% ${sideName})`, margin: round1(M.normInv(clamp(mk.pD, 0.02, 0.98)) * 6), sigma: 5, discount: 0.6 });
+        signals.push({ key: "markets", side: "I", label: `Prediction market (Kalshi: ${Math.round(mk.pD * 100)}% ${sideName})${nrNote()}`, margin: round1(M.normInv(clamp(mk.pD, 0.02, 0.98)) * 6 - NR()), sigma: 5, discount: 0.6 });
       }
       if (pm) {
         r.polymarket = pm;
-        signals.push({ key: "polymarket", side: "I", label: `Prediction market (Polymarket: ${Math.round(pm.pD * 100)}% ${sideName})`, margin: round1(M.normInv(clamp(pm.pD, 0.02, 0.98)) * 6), sigma: 5, discount: 0.6 });
+        signals.push({ key: "polymarket", side: "I", label: `Prediction market (Polymarket: ${Math.round(pm.pD * 100)}% ${sideName})${nrNote()}`, margin: round1(M.normInv(clamp(pm.pD, 0.02, 0.98)) * 6 - NR()), sigma: 5, discount: 0.6 });
       }
       // Markets sometimes list a party ("Democratic party", "Nixon (Democratic nominee)") instead of a person.
       const person = (n) => (n && /\S\s+\S/.test(n) && !/\b(party|nominee|democrats?|democratic|republicans?|candidate|other|independent)\b/i.test(n) ? n : null);
