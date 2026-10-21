@@ -89,18 +89,30 @@ partisan baseline + national climate + incumbency + public approval + qualificat
 
 The fundamentals are then averaged with expert ratings and prediction markets in three equal thirds (Democratic-leaning, independent, Republican-leaning sources; see below). The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simulations that share a national polling error.
 
-## Public-opinion data and neutrality
+## No public polls: real-vote measures and our own modeled polls
 
-`data/polling.js` holds every approval rating, national polling average and 2026 head-to-head poll the site uses. Each entry has its pollster, field date and a link. They were collected from news coverage of published polls in mid-October 2026, and these rules keep them neutral:
+The site uses **no public opinion polls** anywhere. Even the largest opinion polls reach well under 0.1% of voters. Instead it relies on measures where **at least 7% of voters** took part, all of them actual ballots:
 
-1. **Independent pollsters only** count toward averages: universities, news media and nonpartisan firms.
-2. **Sponsored polls are excluded.** Polls paid for by campaigns, parties or advocacy groups are listed with their sponsor but don't count, whichever side paid.
-3. **Simple averages.** No pollster grades or house-effect corrections.
-4. **Neutral imputation.** Governors with no qualifying poll get the median of all sourced governors and are flagged.
-5. **Several aggregators for national numbers.** President approval averages RealClearPolitics, Silver Bulletin, NYT and Poliwave; the generic ballot averages Silver Bulletin, RCP, FiftyPlusOne and USPollingData.
-6. **Equal thirds in the forecast.** Polls are not used in the election forecast. Democratic-leaning, independent and Republican-leaning sources each count one third (see below).
+1. **2026 primary ballots.** Votes cast for each party's candidates in every race's primaries, read from each race's Wikipedia results tables by `scripts/fetch-signals.mjs`. A race uses them only if they reach 7% of its 2024 electorate; today's range is 10–57%.
+   - Primary turnout runs high for whichever party is more energized everywhere at once, and special elections already measure that. So only each race's gap *relative to the average race* counts, at half strength. The correction is the same for both parties.
+   - Uncertainty: σ 5 for top-two primaries, 8 when both parties' primaries were contested, and 11 otherwise.
+2. **2025–26 special elections.** These set the national climate, in place of the generic-ballot poll.
+3. **Each governor's own last general election.**
+   - It gives incumbents running again a personal vote: ½ × (their last margin − their party's presidential margin in the state that cycle).
+   - It also feeds their modeled approval.
 
-The Methodology tab shows every governor's approval with its sources. Each race in the Midterm tab lists the polls behind it.
+**Our own modeled polls:**
+- **Approval** for every governor and the President comes from one formula for both parties:
+
+  95% × (50 + support ÷ 2 + economy)
+
+  - *Support* is the governor's 2026 forecast margin, or their own last election margin if they are not on the ballot. For the President it is the special-election climate.
+  - *Economy* is the state's unemployment and GDP growth compared with the nation.
+
+  Modeled approval feeds the rubric's Public Opinion category.
+- **A modeled likely-voter poll** for every race. It is the predicted vote with an undecided share (3–9%) that grows with the race's uncertainty.
+
+`data/polling.js` still holds the special-election results, primary-season events and official indicator updates. The poll numbers stored there are not used.
 
 ## How the forecast combines evidence (no polls, equal thirds)
 
@@ -109,7 +121,7 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 | Group | Evidence |
 | --- | --- |
 | **Democratic-leaning sources** (⅓) | Expert ratings from The Economist and Sabato's Crystal Ball (and NBC News whenever it publishes ratings) |
-| **Independent sources** (⅓) | Fundamentals (vote history, Cook PVI, climate from special elections, incumbency, qualifications, FEC money, state economy); ratings from Cook, Inside Elections, Decision Desk HQ, Silver Bulletin, Split Ticket and FiftyPlusOne; prediction markets (Kalshi, Polymarket) |
+| **Independent sources** (⅓) | Fundamentals (vote history, Cook PVI, climate from special elections, incumbency, qualifications, FEC money, state economy, governors' personal vote); 2026 primary ballots; ratings from Cook, Inside Elections, Decision Desk HQ, Silver Bulletin, Split Ticket and FiftyPlusOne; prediction markets (Kalshi, Polymarket) |
 | **Republican-leaning sources** (⅓) | Expert ratings from Fox News and RealClearPolitics |
 
 - **Classification rule.** An outlet is Democratic- or Republican-leaning when [AllSides](https://www.allsides.com/media-bias/ratings) or [Media Bias/Fact Check](https://mediabiasfactcheck.com/) rates it left or right of center and neither rates it the other way. Everything else is independent. The full table, with each rating, is on the Methodology tab and in `M.SOURCE_LEAN` in `js/model.js`.
@@ -174,7 +186,7 @@ npm run check
   - GitHub only runs scheduled workflows from the repository's **default branch**, so the schedule starts once this branch is merged into `main`.
   - Add a repository secret `DATA_CONTACT_EMAIL` (Settings → Secrets and variables → Actions). The labor statistics bureau requires a contact address.
   - For visitors to see refreshed data, host the site from `main`, for example with GitHub Pages.
-- **What doesn't auto-refresh:** approval ratings and race polls (`data/polling.js`) and curated officeholders (`data/leaders.js`). Those come from news coverage and are reviewed by hand under the neutrality rules above.
+- **What doesn't auto-refresh:** curated officeholders (`data/leaders.js`) and special-election results (`data/polling.js`) are reviewed by hand.
 - **Source update frequency:** most agencies publish monthly or annually, so most 30-minute runs find nothing new and make no commit.
 
 ## Limitations

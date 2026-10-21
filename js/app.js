@@ -240,21 +240,19 @@
   }
 
   // One line per poll: "Pollster (date): 52% approve / 41% disapprove", linked when a URL exists.
-  const pollLine = (x, mode) => {
-    const val = mode === "race"
-      ? (x.D != null ? `D ${x.D} – R ${x.R}` : x.margin != null ? `margin ${x.margin > 0 ? "D+" : x.margin < 0 ? "R+" : "±"}${Math.abs(x.margin)}` : esc(x.note ?? ""))
-      : `${x.approve}% ${x.scale === "favorability" ? "favorable" : x.scale === "rating" ? "excellent/good" : "approve"}${x.disapprove != null ? ` / ${x.disapprove}% ${x.scale === "favorability" ? "unfavorable" : x.scale === "rating" ? "fair/poor" : "disapprove"}` : ""}`;
-    const name = x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.pollster)}</a>` : esc(x.pollster);
-    return `<li>${name}${x.date ? ` (${esc(x.date)})` : ""}: ${val}${x.sponsor ? ` — <i>sponsor: ${esc(x.sponsor)}</i>` : ""}</li>`;
-  };
-  function approvalBlock(info) {
-    if (!info) return "";
+  // Modeled approval: our own estimate from actual votes and official data (no public polls).
+  function approvalBlock(a) {
+    if (!a) return "";
     return `<div class="approval">
-      <div class="qual"><span>Job approval</span><div class="meter"><i style="width:${info.value}%"></i></div><b class="num">${fmt(info.value)}%</b></div>
-      <details><summary>${info.imputed ? "No qualifying public poll — neutral median imputed" : `Average of ${info.polls.length} independent poll${info.polls.length > 1 ? "s" : ""}`}</summary>
-        ${info.polls.length ? `<ul class="sources">${info.polls.map((x) => pollLine(x)).join("")}</ul>` : ""}
-        ${info.excluded?.length ? `<p class="fine">Excluded (sponsored by a campaign, party or advocacy group):</p><ul class="sources">${info.excluded.map((x) => pollLine(x)).join("")}</ul>` : ""}
-        ${info.note ? `<p class="fine">${esc(info.note)}</p>` : ""}
+      <div class="qual"><span>Approval (modeled)</span><div class="meter"><i style="width:${a.value}%"></i></div><b class="num">${fmt(a.value)}%</b></div>
+      <details><summary>Our estimate — no public polls</summary>
+        <p class="fine">Approve <b>${fmt(a.value)}%</b> · disapprove <b>${fmt(a.disapprove)}%</b> · not sure ${a.unsure}%.</p>
+        <ul class="sources">
+          <li>Support: ${a.support > 0 ? "+" : ""}${fmt(a.support)} pts, from ${esc(a.basis)}</li>
+          ${a.economy ? `<li>State economy vs. the nation: ${a.economy > 0 ? "+" : ""}${fmt(a.economy)} pts</li>` : ""}
+          <li>Party's baseline lean: ${a.lead > 0 ? "+" : ""}${fmt(a.lead)} pts · cross-partisan appeal ${a.crossover > 0 ? "+" : ""}${fmt(a.crossover)}</li>
+        </ul>
+        <p class="fine">Approval = 95% × (50 + support ÷ 2 + economy). The same formula for every officeholder of either party; see Rubric &amp; Methodology.</p>
       </details></div>`;
   }
 
@@ -272,7 +270,7 @@
         </div>
       </div>
       <div class="qual"><span>Qualifications</span><div class="meter"><i style="width:${b.qual.score}%"></i></div><b class="num">${b.qual.score}/100</b></div>
-      ${kind === "governor" ? approvalBlock(p.approvalInfo) : ""}
+      ${kind === "governor" ? approvalBlock(M.modeledApproval(p.state)) : ""}
       ${ctx.approval ? approvalBlock(ctx.approval) : ""}
       <details ${ctx.open ? "open" : ""}><summary>Biography &amp; possible next moves</summary>
         <h4>Qualifications &amp; background</h4>
@@ -303,7 +301,7 @@
     const govs = d3.rollup(Object.entries(GOVERNORS).filter(([k]) => k !== "DC"), (v) => v.length, ([, g]) => g.party);
     return `<div class="kicker">National</div><h2>United States</h2>
       <p class="hint">Click any state to drill down to its counties and cities. Use the tabs above for the 2026 midterm forecast and the scoring method.</p>
-      ${leanBlock(l, `Nationwide popular-vote orientation. Recent presidential results are weighted and adjusted for the current generic ballot (D+${NATIONAL_OPINION.genericBallot}).`)}
+      ${leanBlock(l, `Nationwide popular-vote orientation. Recent presidential results are weighted and adjusted for the national climate measured from special elections (${gbLabel(NATIONAL_OPINION.climate)}).`)}
       ${rubricBlock("US", "Federal government, scored with the same goalposts as the states")}
       <section><h3>Balance of power</h3>
         <ul class="link-list">
@@ -315,9 +313,8 @@
       <section><h3>National leaders</h3>
         ${NATIONAL_LEADERS.map((p) => {
           const roster = p.roster && CONGRESS.find((m) => m.id === p.roster);
-          const pa = p.office.startsWith("President") && POLLING.national.presidentApproval;
           return leaderCard({ ...(roster ?? {}), ...p, state: "US" }, p.office, "national",
-            pa ? { approval: { value: pa.value, polls: pa.polls } } : {});
+            p.office.startsWith("President") ? { approval: M.modeledApproval("US") } : {});
         }).join("")}
       </section>
       <p class="note">Officeholder data: Congress from the public @unitedstates/congress-legislators roster; governors, mayors and county leaders curated as of ${NATIONAL_OPINION.asOf}. Verify against official sources before relying on it.</p>
@@ -560,7 +557,7 @@
   globalThis.openState = (st) => { showTab("map"); go({ level: "state", st }); };
   // Shared helpers for the Races tab (js/races.js).
   globalThis.PP = {
-    getForecast: () => forecast, leaderCard, esc, fmt, evidenceTable, ratingsLine, marketsLine, voteTable, shortVote, face, matchup, governorOf: (st) => GOVERNORS[st] && withState(GOVERNORS[st], st), govTitle, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
+    getForecast: () => forecast, leaderCard, esc, fmt, evidenceTable, ratingsLine, marketsLine, voteTable, modeledPoll, shortVote, face, matchup, governorOf: (st) => GOVERNORS[st] && withState(GOVERNORS[st], st), govTitle, gbLabel: (v) => (v === 0 ? "Even" : v > 0 ? `D+${v}` : `R+${-v}`),
     getTrackedState: () => trackedState, setTrackedState, openDelegation,
     isFollowing: (id) => following.has(id),
     toggleFollow: (id) => { following.has(id) ? following.delete(id) : following.add(id); saveFollowing(); updateFollowCount(); },
@@ -625,7 +622,7 @@
         ${split(govD / 50)}<div class="sub">${gov.length} races on the ballot; expected value from race probabilities.</div></div>
       <div class="card"><div class="label">National climate</div>
         <div class="big">${gbLabel(forecast.climate.value)}</div>
-        <div class="sub">${forecast.climate.parts.map((x) => `${esc(x.label)}: <b>${gbLabel(x.value)}</b>`).join("<br>")}<br>No polls are used.<br>Swing vs. 2024 House vote: <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>.</div></div>`;
+        <div class="sub">${forecast.climate.parts.map((x) => `${esc(x.label)}: <b>${gbLabel(x.value)}</b>`).join("<br>")}<br>No public polls are used.<br>Swing vs. 2024 House vote: <b>${forecast.swing > 0 ? "+" : ""}${forecast.swing} pts toward ${forecast.swing >= 0 ? "Democrats" : "Republicans"}</b>.</div></div>`;
     renderRaceTable();
   }
 
@@ -697,11 +694,22 @@
   function marketsLine(r) {
     const one = (m, name) => `<a href="${esc(m.url)}" target="_blank" rel="noopener">${name}</a> ${esc(m.D ?? (r.challenger === "I" ? "Independent" : "Democrat"))} ${Math.round(m.pD * 100)}% · ${esc(m.R ?? "Republican")} ${Math.round((1 - m.pD) * 100)}%`;
     const parts = [r.market && one(r.market, "Kalshi"), r.polymarket && one(r.polymarket, "Polymarket")].filter(Boolean);
-    return parts.length ? `<p class="fine">Prediction markets: ${parts.join("; ")}.</p>` : "";
+    const p = r.primary;
+    const prim = p ? `<p class="fine">2026 primary ballots (<a href="${esc(p.url)}" target="_blank" rel="noopener">results</a>): ${p.D.toLocaleString("en-US")} for Democrats, ${p.R.toLocaleString("en-US")} for Republicans, ${fmt(p.share)}% of the 2024 electorate (${esc(p.type)}). Raw gap ${marginText(p.rawMargin)}, against an average race's ${marginText(p.avgGap)}.</p>` : "";
+    return (parts.length ? `<p class="fine">Prediction markets: ${parts.join("; ")}.</p>` : "") + prim;
   }
 
   // Predicted popular vote: shares, 80% range and estimated votes for each side.
   function shortVote(r) { return `${r.challenger === "I" ? "I" : "D"} ${fmt(r.vote.D)}% · R ${fmt(r.vote.R)}% · other ${fmt(r.vote.O)}%`; }
+  // Our own modeled poll: what an unbiased poll of likely voters would show today — the predicted
+  // vote with an undecided share that grows with the race's uncertainty (3–9%).
+  function modeledPoll(r) {
+    const v = r.vote, u = Math.round(Math.min(9, Math.max(3, 1.2 * r.sigma)));
+    const k = (100 - u) / 100;
+    const dParty = r.challenger === "I" ? "I" : "D";
+    const d = Math.round(v.D * k), rr = Math.round(v.R * k), o = Math.round(v.O * k);
+    return `<p class="fine"><b>Our modeled poll</b> (likely voters, today; no public polls): ${dParty} ${d}% · R ${rr}% · other ${o}% · undecided ${100 - d - rr - o}%.</p>`;
+  }
   function voteTable(r) {
     const v = r.vote;
     const n = r.nominees;
@@ -716,6 +724,7 @@
           <tr><td>${name("R")} <span class="chip R">R</span></td><td class="num"><b>${fmt(v.R)}%</b></td><td class="num">${fmt(two - v.hi)}–${fmt(two - v.lo)}%</td>${v.total ? `<td class="num">${votes(v.votesR)}</td>` : ""}</tr>
           <tr><td>Other candidates</td><td class="num">${fmt(v.O)}%</td><td class="num"></td>${v.total ? `<td class="num">${votes(v.votesO)}</td>` : ""}</tr>
         </tbody></table></div>
+      ${modeledPoll(r)}
       <p class="fine">Predicted margin ${marginText(v.margin)}.${v.total ? ` Expected turnout ≈ ${v.total.toLocaleString("en-US")} votes (0.75 × the 2024 vote, the usual midterm drop-off).` : ""} The 80% range covers the outcome in 4 of 5 simulated elections.</p>`;
   }
 
@@ -815,7 +824,7 @@ Other       = 0.4 · non-major vote + 0.4%
       <p>Qualification score (0–100) = years in elected office × 3 (max 45) + 12 per prior public office (max 35) + 6 per relevant professional credential such as law, military, medicine, business or education (max 15) + 5 for a party-leadership role. Possible next moves come from rules that look at term limits, age, the office's next election, open seats in the state, how safe the seat is, and the 2026 forecast.</p>
 
       <h2>4. 2026 midterm forecast</h2>
-      <p class="callout"><b>No polls are used in the forecast.</b> Head-to-head race polls, the generic congressional ballot and approval ratings are all left out. Each race is estimated from votes already cast, money, the economy, expert ratings and prediction markets. Ratings and markets are judgments made by others, and some of those forecasters do look at polls.</p>
+      <p class="callout"><b>No public polls are used.</b> Head-to-head race polls, the generic congressional ballot and approval polls are all left out. The forecast leans instead on measures where at least 7% of voters took part. Those are the actual 2026 primary ballots in each race, the 2025–26 special elections and each governor's own last election. They are combined with vote history, money, the economy, expert ratings and prediction markets. Ratings and markets are judgments made by others, and some of those forecasters do look at polls.</p>
       <p>Each kind of evidence becomes an estimated Democratic margin with an uncertainty. The evidence is sorted into <b>three equal groups</b>: <b>Democratic-leaning sources</b>, <b>independent sources</b> and <b>Republican-leaning sources</b>. Each group counts for exactly one third of the forecast.</p>
 <pre class="formula">Fundamentals (σ 6–7; governors 10)                               → independent group
   = partisan baseline (vote history; Cook PVI on 2026 House lines)
@@ -828,6 +837,11 @@ Other       = 0.4 · non-major vote + 0.4%
 Expert ratings (σ 6; 10 if every rater in the group says Safe)  → by outlet (table below)
   each group's raters averaged: Safe/Solid ±15 · Likely ±8 · Lean ±4 · Tilt ±1.5 · Toss-up 0
 Prediction markets (σ 5 each): Kalshi and Polymarket, Φ⁻¹(price) × 6 → independent group
+2026 primary ballots (actual votes; only where ≥ 7% of the 2024 electorate voted) → independent group
+  margin = baseline + climate + 0.5 × (race's D-minus-R primary-ballot gap − the average race's gap)
+  σ 5 top-two primaries · 8 both parties contested · 11 otherwise (an uncontested primary draws fewer)
+Governors running again: + personal vote = ½ × (their last election margin − their party's
+  presidential margin in the state that cycle), from actual votes
 
 Inside a group:  weight = 1 ÷ σ²  (× 0.6 for ratings and markets when a group has several
                  signals, because they partly react to each other)
@@ -859,22 +873,28 @@ Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presiden
       <p>Chamber control comes from 20,000 simulated elections. Each simulation draws one shared national error (σ 2.5 pts) plus independent race-level errors. Democrats need 218 House seats, and 51 Senate seats because the Republican Vice President breaks ties.</p>
 
       <h2>5. Sources &amp; neutrality</h2>
-      <p>Approval ratings, national polling and race polls come from published polls collected from news coverage on ${esc(POLLING.asOf)}. Each number lists its pollster, field date and a link. These rules keep the inputs as neutral as possible:</p>
+      <p class="callout"><b>No public opinion polls are used anywhere on this site.</b> Even the largest opinion polls reach well under 0.1% of voters. Instead, the site relies on measures where <b>at least 7% of voters</b> took part (actual ballots), and it predicts the poll numbers itself.</p>
       <ol>
-        <li><b>Independent pollsters first.</b> Universities, news organizations and nonpartisan firms that publish their methods count, such as Morning Consult, Emerson, Siena, Marist, Quinnipiac, UNH, Marquette and Vanderbilt.</li>
-        <li><b>Sponsored polls are excluded from averages.</b> Polls paid for by a campaign, party or advocacy group are shown with their sponsor but don't count, whichever side paid for them.</li>
-        <li><b>Simple averages.</b> No pollster grades or "house effect" corrections, so anyone can reproduce the number.</li>
-        <li><b>Neutral imputation.</b> A governor with no qualifying poll gets the median of all sourced governors (${fmt(M.approvalMedian)}%), not a guess in either direction.</li>
-        <li><b>Polls are shown for reference only.</b> The approval ratings below feed the government rubric's public-opinion score. They are not used in the election forecast.</li>
+        <li><b>2026 primary ballots</b> (section 4): real votes in every race's primaries, used only where they reach 7% of the 2024 electorate. Today the range is ${(() => { const xs = forecast.races.filter((r) => r.primary).map((r) => r.primary.share); return xs.length ? `${fmt(Math.min(...xs))}–${fmt(Math.max(...xs))}%` : "—"; })()} of voters across ${forecast.races.filter((r) => r.primary).length} races.</li>
+        <li><b>2025–26 special elections</b>: the national climate (${gbLabel(NATIONAL_OPINION.climate)}). It stands in for the "generic ballot" poll.</li>
+        <li><b>Each governor's own last general election</b>: their personal vote and modeled approval.</li>
+        <li><b>Our own modeled polls.</b> Approval ratings are predicted with one formula for both parties, shown below. Each race shows a modeled likely-voter poll, which is the predicted vote with the undecided share that the race's uncertainty implies.</li>
         <li><b>Equal thirds.</b> Democratic-leaning, independent and Republican-leaning sources each count one third of every race forecast (section 4), so neither side's outlets can outvote the other.</li>
       </ol>
+<pre class="formula">Modeled approval = 95% × (50 + support ÷ 2 + economy)            (5% "not sure")
+  support  = governor on the 2026 ballot: their 2026 forecast margin
+             otherwise: their own last general-election margin (actual votes)
+             President: the national climate from special elections (${gbLabel(NATIONAL_OPINION.climate)})
+  economy  = governors: −1.5 × (state − U.S. unemployment) + 0.5 × (state − U.S. GDP growth), max ±4
+Cross-partisan appeal = support ÷ 2 + economy − the party's baseline lean ÷ 2</pre>
       <div class="table-wrap"><table class="method-table">
-        <thead><tr><th>State</th><th>Governor</th><th class="num">Approval used</th><th>Basis</th></tr></thead>
-        <tbody>${Object.entries(GOVERNORS).sort((a, b) => a[0].localeCompare(b[0])).map(([st, g]) => {
-          const i = g.approvalInfo;
-          return `<tr><td>${st}</td><td>${esc(g.name)}</td><td class="num">${fmt(i.value)}%${i.imputed ? "*" : ""}</td><td><ul class="sources" style="margin:0">${i.polls.length ? i.polls.map((x) => pollLine(x)).join("") : `<li>${esc(i.note ?? "No qualifying poll")} (median imputed)</li>`}${(i.excluded ?? []).map((x) => pollLine(x)).join("")}</ul></td></tr>`;
+        <thead><tr><th>State</th><th>Governor</th><th class="num">Modeled approval</th><th>Based on</th></tr></thead>
+        <tbody><tr><td>US</td><td>President</td><td class="num">${fmt(M.modeledApproval("US").value)}%</td><td>${esc(M.modeledApproval("US").basis)}</td></tr>
+        ${Object.entries(GOVERNORS).sort((a, b) => a[0].localeCompare(b[0])).map(([st, g]) => {
+          const a = M.modeledApproval(st);
+          const ge = RACE_SIGNALS.governorElections?.[st];
+          return a ? `<tr><td>${st}</td><td>${esc(g.name)}</td><td class="num">${fmt(a.value)}%</td><td>${esc(a.basis)}${ge && a.basis.includes("own") ? ` (<a href="${esc(ge.url)}" target="_blank" rel="noopener">results</a>)` : ""}${a.economy ? `; economy ${a.economy > 0 ? "+" : ""}${fmt(a.economy)}` : ""}</td></tr>` : "";
         }).join("")}</tbody></table></div>
-      <p class="fine">* imputed median. Ratings labelled "favorable" or "excellent/good" use different question wording from job approval and run a little lower; they're used only where no job-approval poll exists.</p>
       <p class="callout"><b>Rubric indicators:</b> 17 of the 19 indicators are downloaded directly from the official agencies by <code>scripts/fetch-indicators.mjs</code> (last run ${esc(OFFICIAL_INDICATORS?.fetched ?? "n/a")}): Census ACS, BLS, BEA, NCES/NAEP, CDC/NCHS, FBI Crime Data Explorer, FHWA, EIA and the U.S. Elections Project. Credit ratings and pension funding have no free official feed and remain curated approximations, marked <span class="tag">approx.</span>. The source and data year for each indicator are listed in the rubric table above.</p>
 
       <h2>Data sources &amp; limitations</h2>
@@ -882,7 +902,7 @@ Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presiden
         <li>County presidential results: <code>tonmcg/US_County_Level_Election_Results_08-24</code>. House results: FiveThirtyEight <code>election-results</code>.</li>
         <li>Members of Congress, with service history and leadership: <code>@unitedstates/congress-legislators</code> (public domain).</li>
         <li>Map: U.S. Census cartographic boundaries via <code>us-atlas</code>. Cities: the 1,000 largest U.S. cities (Census estimates).</li>
-        <li>Governors, mayors (~85 largest cities), county executives, approval ratings and retirement statuses are curated in <code>data/leaders.js</code> as of ${NATIONAL_OPINION.asOf}. Counties and cities without a curated leader show their form of government instead.</li>
+        <li>Governors, mayors (~85 largest cities), county executives and retirement statuses are curated in <code>data/leaders.js</code> as of ${NATIONAL_OPINION.asOf}. Counties and cities without a curated leader show their form of government instead.</li>
         <li>Mid-decade redistricting (TX, CA, MO, NC, OH, UT) isn't fully reflected in district baselines, so those races get extra uncertainty.</li>
         <li>This is a statistical model for education and exploration. It is not an official forecast or an endorsement.</li>
       </ul>

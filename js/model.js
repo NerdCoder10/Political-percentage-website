@@ -12,26 +12,17 @@
 
   // ---------------------------------------------------------------------------------
   // 0. SOURCED PUBLIC-OPINION DATA (data/polling.js)
-  // Approval = simple average of the qualifying (non-sponsored) polls listed for each
-  // governor; governors with no qualifying poll get the median of all sourced values
-  // (a neutral midpoint). National numbers average several aggregators.
+  // data/polling.js now supplies only non-poll facts: special-election results, primary-season
+  // events and official indicator updates.
   // ---------------------------------------------------------------------------------
   const P = G.POLLING;
   const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
   const median = (a) => { const b = [...a].sort((x, y) => x - y); const m = b.length >> 1; return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2; };
   M.pollMargin = (poll) => (poll.margin != null ? poll.margin : poll.D != null && poll.R != null ? poll.D - poll.R : null);
+  // Public opinion polls are NOT used anywhere (owner's choice). Approval ratings are modeled from
+  // actual votes and official statistics instead (M.modeledApproval).
   if (P) {
-    G.NATIONAL_OPINION.presidentApproval = P.national.presidentApproval.value;
-    G.NATIONAL_OPINION.genericBallot = P.national.genericBallot.value;
     G.NATIONAL_OPINION.asOf = P.asOf;
-    const sourced = {};
-    for (const [st, a] of Object.entries(P.governorApproval)) if (a.polls.length) sourced[st] = Math.round(mean(a.polls.map((x) => x.approve)) * 10) / 10;
-    M.approvalMedian = median(Object.values(sourced));
-    for (const [st, g] of Object.entries(G.GOVERNORS)) {
-      const a = P.governorApproval[st] ?? { polls: [] };
-      g.approval = sourced[st] ?? M.approvalMedian;
-      g.approvalInfo = { ...a, value: g.approval, imputed: sourced[st] == null };
-    }
     for (const [st, e] of Object.entries(P.events)) {
       if (e.governor === "lost-primary") { G.GOVERNORS[st].status2026 = "lost-primary"; G.GOVERNORS[st].event = e; }
       if (e.governor === "nominated") G.GOVERNORS[st].event = e;
@@ -56,6 +47,7 @@
     return { parts: [{ key: "specials", label: `2025–26 special elections: Democrats ran ${swing} pts ahead of the 2024 baseline × 0.6, from R+1.5`, value: fromSpecials, weight: 1 }], value: fromSpecials };
   };
   G.NATIONAL_OPINION.climate = M.climateParts().value;
+  G.NATIONAL_OPINION.genericBallot = G.NATIONAL_OPINION.climate; // modeled from special elections, not polls
 
   // Official statistics (data/generated/indicators.js, built by scripts/fetch-indicators.mjs)
   // replace the curated approximations wherever an agency published a value.
@@ -71,8 +63,8 @@
   M.indicatorSources.credit = { official: false, source: "S&P Global general-obligation ratings, curated (no free data feed)" };
   M.indicatorSources.pension = { official: false, source: "Pew Charitable Trusts / Equable pension funded ratios, curated (no free data feed)" };
   M.indicatorSources.realIncome = { official: !!OI.income && !!OI.rpp, source: "Median household income (Census ACS) ÷ regional price parity (BEA) × 100" };
-  M.indicatorSources.approval = { official: true, source: "Average of independent polls (data/polling.js)" };
-  M.indicatorSources.crossover = { official: true, source: "Approval minus partisan expectation (computed)" };
+  M.indicatorSources.approval = { official: true, source: "Modeled approval — our own estimate from actual votes and official statistics; no public polls (see Methodology)" };
+  M.indicatorSources.crossover = { official: true, source: "Modeled support above the party's partisan baseline (computed)" };
 
   M.states = Object.fromEntries(G.STATES_META.map(([fips, abbr, name, seats]) => [abbr, { fips, abbr, name, seats }]));
   M.stateByFips = Object.fromEntries(G.STATES_META.map(([fips, abbr]) => [fips, abbr]));
@@ -220,10 +212,10 @@
         { key: "poverty", label: "Poverty rate", points: 40, worst: 20, best: 7, unit: "%" },
       ] },
     { id: "opinion", name: "Public Opinion & Trust", points: 140,
-      why: "Residents' own verdict. Weighted heavily, but below economy because approval can swing on partisanship rather than performance — the cross-partisan item corrects for that.",
+      why: "Residents' own verdict, as our modeled approval (no public polls). Weighted heavily, but below economy because approval can swing on partisanship rather than performance — the cross-partisan item corrects for that.",
       items: [
-        { key: "approval", label: "Chief-executive job approval", points: 100, worst: 30, best: 75, unit: "%" },
-        { key: "crossover", label: "Cross-partisan appeal (approval vs. partisan baseline)", points: 40, worst: -15, best: 20, unit: " pts" },
+        { key: "approval", label: "Chief-executive job approval (modeled)", points: 100, worst: 30, best: 75, unit: "%" },
+        { key: "crossover", label: "Cross-partisan appeal (support vs. partisan baseline)", points: 40, worst: -15, best: 20, unit: " pts" },
       ] },
     { id: "health", name: "Healthcare & Public Health", points: 120,
       why: "Life-or-death outcomes; strongly shaped by Medicaid, public-health and insurance policy.",
@@ -271,14 +263,9 @@
     if (!row) return null;
     const v = Object.fromEntries(G.INDICATOR_COLUMNS.map((k, i) => [k, row[i]]));
     v.realIncome = round1((v.income / v.rpp) * 100);
-    let party, approval;
-    if (code === "US") { party = "R"; approval = G.NATIONAL_OPINION.presidentApproval; }
-    else { party = G.GOVERNORS[code]?.party; approval = G.GOVERNORS[code]?.approval; }
-    // Expected approval if people rated purely by party: 50% + half the executive party's lead.
-    const l = code === "US" ? M.nationLean() : M.stateLean(code);
-    const lead = party === "D" ? l.D - l.R : party === "R" ? l.R - l.D : 0;
-    v.approval = approval;
-    v.crossover = round1(approval - (50 + lead / 2));
+    const a = M.modeledApproval(code);
+    v.approval = a?.value ?? 50;
+    v.crossover = a?.crossover ?? 0;
     return v;
   };
 
@@ -374,7 +361,7 @@
       if (p.event && s !== "lost-primary") moves.push(p.event.text);
       if (p.note) moves.push(p.note);
       if ((s === "term-limited" || s === "retiring" || s === "lost-primary") && a < 70) moves.push(fits ? "Strong position for a future U.S. Senate run, cabinet post, or national role." : "Could seek a federal appointment or private-sector role; a statewide federal race would be uphill given the state's lean.");
-      if (a < 64 && (p.approval >= 55 || (lean && M.states[st].seats >= 13))) moves.push("Frequently mentioned as a potential 2028 presidential or vice-presidential contender.");
+      if (a < 64 && ((kind === "governor" && M.modeledApproval(p.state)?.value >= 55) || (lean && M.states[st].seats >= 13))) moves.push("Frequently mentioned as a potential 2028 presidential or vice-presidential contender.");
       if (s === "running" && a >= 75) moves.push("Likely final term if re-elected.");
     } else if (kind === "senator") {
       const up = p.cls === 2 || p.end?.startsWith("2026");
@@ -552,7 +539,11 @@
   M.MIDTERM_TURNOUT = 0.75;
   const MARKET_SAFE = 9.8; // a 95%+ market price, Φ⁻¹(0.95) × 6
   const stateVotes24 = {};
-  const votes24 = (st) => (stateVotes24[st] ??= Object.values(E().counties).reduce((a, c) => a + (c.st === st ? c.v24?.[3] ?? 0 : 0), 0));
+  // The larger of the 2024 presidential vote (county file) and the 2024 House vote: the county file is
+  // incomplete for Alaska.
+  const votes24 = (st) => (stateVotes24[st] ??= Math.max(
+    Object.values(E().counties).reduce((a, c) => a + (c.st === st ? c.v24?.[3] ?? 0 : 0), 0),
+    Object.entries(G.HOUSE24).reduce((a, [k, h]) => a + (k.startsWith(`${st}-`) ? h.total : 0), 0)));
   M.predictedVote = (r) => {
     let vm = 0;
     for (const t of r.thirds) for (const sg of r.signals.filter((x) => x.side === t.side)) {
@@ -578,11 +569,96 @@
     return out;
   };
 
+  // ---- 2026 primary ballots: the "poll" that reaches the most voters ----
+  // Real ballots cast in each race's primaries, summed by party. Used only where they reach at least
+  // 7% of the area's 2024 electorate. Primary turnout runs high for whichever party is more
+  // energized everywhere at once, and the national environment is already measured from special
+  // elections, so only each race's turnout gap RELATIVE to the average race counts (the same
+  // correction for both parties), at half strength:
+  //   margin = partisan baseline + climate + 0.5 × (race's primary gap − average gap of its type)
+  // Uncertainty: top-two primaries (all voters, one ballot) σ 5; both parties contested σ 8;
+  // otherwise σ 11, because an uncontested primary draws fewer of that party's voters.
+  M.PRIMARY_MIN_SHARE = 7;
+  M.primarySignals = (list, swing) => {
+    const info = new Map();
+    const items = [];
+    for (const r of list) {
+      if (r.office === "mayor" || r.challenger === "I" || G.POLLING?.races?.[r.id]?.challenger === "I") continue;
+      const p = SIG().primaries?.[r.id] ?? (r.office === "senate" ? SIG().primaries?.[r.id.replace(/-S$/, "")] : null);
+      if (!p) continue;
+      const st = G.STATES_META.find((x) => x[1] === r.state);
+      const electorate = r.office === "house" ? votes24(r.state) / Math.max(1, st?.[3] ?? 1) : votes24(r.state);
+      const share = electorate ? (100 * (p.D + p.R)) / electorate : 0;
+      if (share < M.PRIMARY_MIN_SHARE) continue;
+      const raw = (100 * (p.D - p.R)) / (p.D + p.R);
+      const expected = r.baseline + swing * elasticityOf(r.baseline);
+      items.push({ r, p, share, raw, expected, gap: raw - expected, group: p.type === "top-two" ? "top-two" : "partisan" });
+    }
+    const avg = {};
+    for (const g of ["top-two", "partisan"]) { const xs = items.filter((x) => x.group === g); avg[g] = xs.length ? mean(xs.map((x) => x.gap)) : 0; }
+    for (const x of items) {
+      info.set(x.r, {
+        D: x.p.D, R: x.p.R, type: x.p.type, url: x.p.url, share: round1(x.share), rawMargin: round1(x.raw), avgGap: round1(avg[x.group]),
+        margin: round1(x.expected + 0.5 * (x.gap - avg[x.group])),
+        sigma: x.p.type === "top-two" ? 5 : x.p.type === "both contested" ? 8 : 11,
+      });
+    }
+    return info;
+  };
+
+  // ---- Modeled approval: our own "poll", built without public polls ----
+  // What an unbiased approval poll would read if approval tracked actual votes and conditions —
+  // one formula for both parties:
+  //   support  = governor on the 2026 ballot: their 2026 forecast margin; otherwise their own last
+  //              general election (actual votes; the party's lean in the state if they were never
+  //              elected); President: the national climate from special elections
+  //   economy  = governors: −1.5 × (state − U.S. unemployment) + 0.5 × (state − U.S. GDP growth), max ±4
+  //   approval = 95% × (50 + support ÷ 2 + economy)        (5% "not sure", as in real approval polls)
+  //   cross-partisan appeal = support ÷ 2 + economy − party baseline ÷ 2
+  M.UNSURE = 5;
+  let govRaces = null;
+  M.modeledApproval = (code) => {
+    const nat = code === "US";
+    const party = nat ? "R" : G.GOVERNORS[code]?.party;
+    if (!party || code === "DC" && !G.GOVERNORS.DC) return null;
+    const dir = party === "D" ? 1 : party === "R" ? -1 : 0;
+    const l = nat ? M.nationLean({ env: 0 }) : M.stateLean(code, { env: 0 });
+    const lead = dir * (l.D - l.R);
+    let support = lead, basis = `the ${M.partyName[party] ?? ""} lean of ${nat ? "the nation" : M.states[code].name}`;
+    if (nat) { support = dir * G.NATIONAL_OPINION.climate; basis = "the national climate measured from 2025–26 special elections"; }
+    else {
+      govRaces ??= Object.fromEntries(M.forecast({ noSim: true }).races.filter((r) => r.office === "governor").map((r) => [r.state, r]));
+      const r = govRaces[code];
+      const ge = SIG().governorElections?.[code];
+      if (r && r.status === "running") { support = dir * r.margin; basis = "the governor's 2026 forecast margin"; }
+      else if (ge) { support = (dir * 100 * (ge.D - ge.R)) / (ge.D + ge.R); basis = `the governor's own ${ge.year} election`; }
+    }
+    const economy = nat ? 0 : round1(clamp(-1.5 * ((indicator(code, "unemp") ?? 0) - (indicator("US", "unemp") ?? 0)) + 0.5 * ((indicator(code, "gdp") ?? 0) - (indicator("US", "gdp") ?? 0)), -4, 4));
+    const raw = clamp(50 + support / 2 + economy, 20, 80);
+    return { value: round1(((100 - M.UNSURE) / 100) * raw), disapprove: round1(((100 - M.UNSURE) / 100) * (100 - raw)), unsure: M.UNSURE,
+      support: round1(support), lead: round1(lead), economy, basis, crossover: round1(support / 2 + economy - lead / 2) };
+  };
+
+  // A sitting governor's personal vote, from actual ballots: how far they ran ahead of (or behind)
+  // their party's presidential margin in the state at their last election, counted at half
+  // strength because personal appeal fades and the next opponent may be stronger.
+  M.governorPersonalVote = (st) => {
+    const g = G.GOVERNORS[st], ge = SIG().governorElections?.[st];
+    if (!g || !ge) return 0;
+    const sh = M.stateShares(st)[ge.year >= 2023 ? "s24" : ge.year >= 2019 ? "s20" : "s16"];
+    if (!sh) return 0;
+    const own = (100 * (ge.D - ge.R)) / (ge.D + ge.R);
+    const pres = (100 * (sh.d - sh.r)) / (sh.d + sh.r);
+    return round1(0.5 * (own - pres)); // D-minus-R points, like every other forecast term
+  };
+
   M.forecast = (opts = {}) => {
     const climate = M.climateParts(opts.climate);
     const swing = climate.value - M.houseNationalMargin24;
     const races = [];
-    const addRace = (r) => {
+    const pending = [];
+    const addRace = (r) => pending.push(r);
+    const finishRace = (r) => {
       const el = elasticityOf(r.baseline);
       r.climate = round1(swing * el);
       r.personal ??= 0;
@@ -630,6 +706,13 @@
       const person = (n) => (n && /\S\s+\S/.test(n) && !/\b(party|nominee|democrats?|democratic|republicans?|candidate|other|independent)\b/i.test(n) ? n : null);
       const mD = person(pm?.D) ?? person(mk?.D), mR = person(pm?.R) ?? person(mk?.R);
       if (!r.nominees && mD && mR) r.nominees = { D: mD, R: mR, fromMarket: true };
+      // Actual 2026 primary ballots (only where they reach 7% of the electorate; see primarySignals).
+      const ps = primaryInfo.get(r);
+      if (ps) {
+        r.primary = ps;
+        const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : `${Math.round(n / 1000)}K`);
+        signals.push({ key: "primary", side: "I", label: `2026 primary ballots: ${k(ps.D)} D vs. ${k(ps.R)} R (${ps.share}% of voters; ${ps.type})`, margin: ps.margin, sigma: ps.sigma });
+      }
       // Robustness: when race-specific evidence (ratings, markets) agrees and the fundamentals
       // sit more than 8 points away from its average, widen the fundamentals' σ in proportion.
       if (signals.length >= 2) {
@@ -713,6 +796,7 @@
         approvalEffect: 0, // approval ratings come from polls, which the forecast does not use
         qualityEffect: running ? round1(dir * clamp((q.score - 50) * 0.04, -2, 2)) : 0,
         economyEffect: M.economyEffect(st, "governor", g.party),
+        personal: running ? M.governorPersonalVote(st) : 0,
         sigma: SIGMA.governor,
       });
     }
@@ -768,7 +852,9 @@
       });
     }
 
-    return { climate, swing: round1(swing), races, control: M.simulate(races) };
+    const primaryInfo = M.primarySignals(pending, swing);
+    pending.forEach(finishRace);
+    return { climate, swing: round1(swing), races, control: opts.noSim ? null : M.simulate(races) };
   };
 
   // Seeded RNG so the numbers are stable between page loads.
