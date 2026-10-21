@@ -5,6 +5,7 @@
 //   • Prediction markets — Kalshi and Polymarket winner markets for each Senate, governor and House race.
 //   • Campaign money — FEC "current campaigns" summary (receipts and cash on hand) for every
 //     House and Senate candidate.
+//   • 2026 primary ballots — votes cast for each party's candidates in every race's primaries.
 //   • Who is not running — Ballotpedia's list of members of Congress not seeking re-election.
 // Run with: npm run fetch:signals   (add --refresh to re-download cached files)
 import fs from "node:fs";
@@ -17,6 +18,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RAW = path.join(ROOT, "scripts/raw/signals");
 fs.mkdirSync(RAW, { recursive: true });
 await import(path.join(ROOT, "data/states-meta.js"));
+await import(path.join(ROOT, "data/leaders.js"));
 const META = globalThis.STATES_META;
 const byName = Object.fromEntries(META.map(([, a, n]) => [n.toLowerCase(), a]));
 const seats = Object.fromEntries(META.map((m) => [m[1], m[3]]));
@@ -108,6 +110,91 @@ step("house ratings", () => {
   }));
 });
 console.log(`ratings: ${Object.keys(ratings).length} races`);
+
+// ------------------------------------------------------------------ 2026 primary ballots
+// The actual ballots cast in each race's 2026 primaries, summed by party, from the results tables on
+// the race's Wikipedia article (statewide races) or the state's House article (one section per
+// district). Partisan primaries ("Democratic primary results" + "Republican primary results") and
+// top-two / blanket primaries (one table, every party) are both read; runoffs are skipped.
+// State party names: "Democratic (DFL)" (MN), "Democratic–NPL" (ND), "Democratic / Progressive" (VT).
+const PARTY_SUFFIX = String.raw`(?:\s*\(DFL\)|[–-]NPL|\s*\/\s*Progressive)?`;
+const primaries = {};
+const plainText = (html) => decode(html.replace(/<style[\s\S]*?<\/style>|<script[\s\S]*?<\/script>/g, "").replace(/data-mw='[^']*'|data-mw="[^"]*"/g, "").replace(/<[^>]+>/g, " ")).replace(/\s+/g, " ");
+function primaryTotals(text) {
+  const out = {};
+  for (const m of text.matchAll(/((?:[A-Z][\w-]*\s){0,3})[Pp]rimary (?:election )?results(?: \[ [\w ]+ \])* Party Candidate Votes %(.*?)Total votes ([\d,]+)/g)) {
+    const head = m[1].trim();
+    if (/runoff/i.test(head)) continue;
+    const votes = { D: [], R: [] };
+    for (const row of m[2].matchAll(new RegExp(`\\b(Democratic|Republican)${PARTY_SUFFIX}\\s+[A-Z][^\\d]{1,90}?\\s(\\d{1,3}(?:,\\d{3})*)\\s+\\d+(?:\\.\\d+)?%?`, "g"))) votes[row[1][0]].push(+row[2].replace(/,/g, ""));
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    // A party's primary was contested when at least two candidates won 10% of its vote.
+    const contested = (a) => a.filter((v) => v >= 0.1 * sum(a)).length >= 2;
+    if (/^Democratic/.test(head)) { if (out.D == null) { out.D = sum(votes.D); out.Dc = contested(votes.D); } }
+    else if (/^Republican/.test(head)) { if (out.R == null) { out.R = sum(votes.R); out.Rc = contested(votes.R); } }
+    else if (out.D == null && out.R == null) { out.D = sum(votes.D); out.R = sum(votes.R); out.blanket = true; }
+  }
+  if (!(out.D > 0 && out.R > 0)) return null;
+  return out.blanket ? { D: out.D, R: out.R, type: "top-two" } : { D: out.D, R: out.R, type: out.Dc && out.Rc ? "both contested" : out.Dc || out.Rc ? "one side contested" : "neither contested" };
+}
+step("primaries", () => {
+  const page = (title) => { try { const h = download(`wiki-${title.replace(/\W+/g, "_")}.html`, WIKI + title.replace(/ /g, "_"), { maxAgeMin: 1440, retries: 2 }); sleep(300); return plainText(h); } catch { return null; } };
+  for (const [, st, name, n] of META) {
+    if (st === "DC") continue;
+    for (const [id, titles] of [[`SEN-${st}`, [`2026 United States Senate election in ${name}`, `2026 United States Senate special election in ${name}`]], [`GOV-${st}`, [`2026 ${name} gubernatorial election`]]]) {
+      for (const t of titles) {
+        const text = page(t);
+        const res = text && primaryTotals(text);
+        if (res) { primaries[t.includes("special") && primaries[id] ? `${id}-S` : id] = { ...res, url: WIKI + t.replace(/ /g, "_") }; break; }
+      }
+    }
+    const houseTitle = `2026 United States House of Representatives election${n === 1 ? "" : "s"} in ${name}`;
+    const text = page(houseTitle);
+    if (!text) continue;
+    if (n === 1) { const res = primaryTotals(text); if (res) primaries[sid(st, 0)] = { ...res, url: WIKI + houseTitle.replace(/ /g, "_") }; continue; }
+    const parts = text.split(/District (\d{1,2}) \[ edit \]/);
+    for (let i = 1; i < parts.length; i += 2) {
+      const d = +parts[i];
+      if (d < 1 || d > n || primaries[sid(st, d)]) continue;
+      const res = primaryTotals(parts[i + 1]);
+      if (res) primaries[sid(st, d)] = { ...res, url: `${WIKI}${houseTitle.replace(/ /g, "_")}#District_${d}` };
+    }
+  }
+});
+console.log(`primaries: ${Object.keys(primaries).length} races`);
+
+// ------------------------------------------------------------------ governors' last elections
+// Each sitting governor's most recent general-election result (votes by party), from the
+// "<year> <State> gubernatorial election" article: an actual vote of the whole state, used to
+// model approval without polls.
+const governorElections = {};
+step("governor elections", () => {
+  for (const [st, g] of Object.entries(globalThis.GOVERNORS)) {
+    if (st === "DC") continue;
+    const name = META.find((m) => m[1] === st)[2];
+    const last = g.name.split(" ").filter((w) => !/^(Jr\.?|Sr\.?|II|III)$/.test(w)).pop();
+    for (let y = 2025; y >= g.since - 1; y--) {
+      const title = `${y} ${name} gubernatorial election`;
+      let text;
+      try { text = plainText(download(`wiki-${title.replace(/\W+/g, "_")}.html`, WIKI + title.replace(/ /g, "_"), { maxAgeMin: 10080, retries: 1 })); sleep(300); }
+      catch { continue; }
+      const tables = [...text.matchAll(/gubernatorial election(?: \[ [\w ]+ \])* Party Candidate Votes %(?: ±%)?(.*?)Total votes ([\d,]+)/g)];
+      const t = tables.at(-1);
+      if (!t) continue;
+      const v = { D: 0, R: 0 };
+      let winner = null, best = 0;
+      for (const row of t[1].matchAll(new RegExp(`\\b(Democratic|Republican|Independent)${PARTY_SUFFIX}\\s+([A-Z][^\\d]{1,90}?)\\s(\\d{1,3}(?:,\\d{3})*)\\s+\\d+(?:\\.\\d+)?%?`, "g"))) {
+        const n = +row[3].replace(/,/g, "");
+        if (row[1] !== "Independent") v[row[1][0]] += n;
+        if (n > best) { best = n; winner = row[2]; }
+      }
+      if (!winner?.includes(last) || !(v.D > 0 && v.R > 0)) continue;
+      governorElections[st] = { year: y, D: v.D, R: v.R, total: +t[2].replace(/,/g, ""), url: WIKI + title.replace(/ /g, "_") };
+      break;
+    }
+  }
+});
+console.log(`governor elections: ${Object.keys(governorElections).length} governors`);
 
 // ------------------------------------------------------------------ prediction markets (Kalshi)
 const markets = {};
@@ -241,14 +328,16 @@ const payload = {
     ratings: { name: "Expert ratings compiled in Wikipedia's 2026 Senate, gubernatorial and House rating tables", url: WIKI + "2026_United_States_Senate_elections" },
     markets: { name: "Kalshi prediction markets (mid-point of bid/ask)", url: "https://kalshi.com/category/elections" },
     polymarkets: { name: "Polymarket prediction markets (mid-point of bid/ask)", url: "https://polymarket.com/predictions/midterms" },
+    governorElections: { name: "Each sitting governor's most recent general election (votes by party), from the state's gubernatorial election article on Wikipedia", url: WIKI + "List_of_current_United_States_governors" },
+    primaries: { name: "2026 primary election results (ballots cast by party), as tabulated on each race's Wikipedia article from state election offices", url: WIKI + "2026_United_States_elections" },
     money: { name: "Federal Election Commission, 2025–26 current campaigns summary (webl26)", url: "https://www.fec.gov/data/browse-data/?tab=bulk-data" },
     notRunning: { name: "Ballotpedia, members of Congress not running for re-election in 2026", url: "https://ballotpedia.org/List_of_U.S._Congress_incumbents_who_are_not_running_for_re-election_in_2026" },
   },
-  ratings, markets, polymarkets, money, notRunning,
+  ratings, markets, polymarkets, primaries, governorElections, money, notRunning,
 };
 const previous = fs.existsSync(file) ? (await import(`${pathToFileURL(file).href}?t=${Date.now()}`), globalThis.RACE_SIGNALS) : null;
 // A source that failed or came back nearly empty this run keeps its previous data.
-for (const key of ["ratings", "markets", "polymarkets", "money"]) {
+for (const key of ["ratings", "markets", "polymarkets", "primaries", "governorElections", "money"]) {
   const before = Object.keys(previous?.[key] ?? {}).length, now = Object.keys(payload[key]).length;
   if (before && now < before * 0.5) { payload[key] = previous[key]; console.log(`${key}: only ${now} this run (had ${before}); kept previous`); }
 }

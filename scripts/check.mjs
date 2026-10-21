@@ -40,6 +40,10 @@ for (const r of f.races) {
   const v = r.vote;
   if (!v || Math.abs(v.D + v.R + v.O - 100) > 0.15 || !(v.lo <= v.D && v.D <= v.hi) || v.D <= 0 || v.R <= 0) check(false, `${r.id} predicted vote ${JSON.stringify(v)}`);
 }
+// Primary ballots: at least 7% of the electorate and never more than all of it.
+for (const r of f.races.filter((x) => x.primary)) if (r.primary.share < 7 || r.primary.share > 100) check(false, `${r.id} primary share ${r.primary.share}%`);
+// No public polls: approval is modeled for every governor and the President.
+check(["US", ...Object.keys(globalThis.GOVERNORS).filter((s) => s !== "DC")].every((c) => Number.isFinite(M.modeledApproval(c)?.value)), "modeled approval missing");
 check(Object.values(M.SOURCE_LEAN).some((x) => x.side === "D") && Object.values(M.SOURCE_LEAN).some((x) => x.side === "R"), "source groups need both sides");
 
 if (process.argv.includes("-v")) {

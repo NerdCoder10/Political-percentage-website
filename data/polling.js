@@ -1,3 +1,7 @@
+// NOTE (October 2026): the site no longer uses any public poll numbers in this file. Only
+// specialElections, events, indicatorUpdates and the race nominee names are read; approval
+// ratings and the generic ballot are modeled from actual votes instead (see js/model.js).
+//
 // Sourced public-opinion data: approval ratings, national polling averages and 2026 race polls.
 // Collected mid-October 2026 from news coverage of published polls. Every number keeps its
 // pollster, field date and a link so it can be checked.
