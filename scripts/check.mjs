@@ -28,6 +28,14 @@ check(by("house").length === 435, `house races ${by("house").length}`);
 check(by("governor").length === 36, `governor races ${by("governor").length}`);
 check(by("senate").length === 35, `senate races ${by("senate").length}`);
 check(f.races.every((r) => Number.isFinite(r.pD)), "non-finite probability");
+// Equal thirds: weights sum to 1, and a partisan group never counts without the opposite one.
+for (const r of f.races.filter((x) => x.thirds)) {
+  const w = r.thirds.reduce((a, t) => a + t.weight, 0);
+  if (Math.abs(w - 1) > 1e-9) check(false, `${r.id} group weights sum to ${w}`);
+  const wD = r.thirds.find((t) => t.side === "D")?.weight ?? 0, wR = r.thirds.find((t) => t.side === "R")?.weight ?? 0;
+  if (Math.abs(wD - wR) > 1e-9) check(false, `${r.id} unbalanced partisan weights D ${wD} R ${wR}`);
+}
+check(Object.values(M.SOURCE_LEAN).some((x) => x.side === "D") && Object.values(M.SOURCE_LEAN).some((x) => x.side === "R"), "source groups need both sides");
 
 if (process.argv.includes("-v")) {
   console.log("US", M.nationLean(), "rubric", M.rubricScore("US").total);

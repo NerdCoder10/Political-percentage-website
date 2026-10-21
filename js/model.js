@@ -502,6 +502,45 @@
     return round1(clamp(0.3 * du, -1.5, 1.5)); // president is a Republican, so this moves toward Democrats
   };
 
+  // ---- People's photos ----
+  // One key per person, so "Donald J. Trump", "SMITH, JOHN A." and "Susan Collins (inc.)" match the
+  // names in data/generated/photos.js: no accents, nicknames, parentheticals, suffixes or initials.
+  M.personKey = (name) => {
+    let n = String(name ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\([^)]*\)|"[^"]*"|“[^”]*”/g, " ");
+    if (/^[^,]+,[^,]+$/.test(n) && n === n.toUpperCase()) n = n.replace(/^([^,]+),\s*(.+)$/, "$2 $1"); // FEC "LAST, FIRST"
+    return n.toLowerCase().replace(/^(sen|rep|gov|dr|mr|mrs|ms)\.?\s+/, "").replace(/[.,'’]/g, " ").split(/[\s-]+/)
+      .filter((w) => w && !/^(jr|sr|ii|iii|iv)$/.test(w) && w.length > 1).join(" ");
+  };
+  // Photo for a person: official congressional portrait or Wikipedia's lead image (see fetch-photos.mjs).
+  M.photo = (p) => {
+    const ph = G.PHOTOS;
+    if (!ph || !p) return null;
+    return (p.id && ph.byId[p.id]) || ph.byName[M.personKey(p.name)] || null;
+  };
+
+  // ---- Source groups for the equal-thirds forecast ----
+  // Rule: a source is Democratic- (or Republican-) leaning when AllSides or Media Bias/Fact Check
+  // rates its outlet left (or right) of center and neither rates it the other way. Everything else —
+  // nonpartisan handicappers, data services, prediction markets and official statistics — is
+  // independent. Ratings as published in 2025–26; see the Methodology tab for links.
+  M.SIDE_LABEL = { D: "Democratic-leaning sources", I: "Independent sources", R: "Republican-leaning sources" };
+  const CORR_THIRDS = 0.5;
+  M.SOURCE_LEAN = {
+    NBC: { name: "NBC News", side: "D", basis: "AllSides: Lean Left · MBFC: Left-Center", url: "https://www.allsides.com/news-source/nbc-news-media-bias" },
+    Econ: { name: "The Economist", side: "D", basis: "AllSides: Lean Left · MBFC: Least Biased", url: "https://www.allsides.com/news-source/economist-media-bias" },
+    Sabato: { name: "Sabato's Crystal Ball", side: "D", basis: "MBFC rates its publisher, the UVA Center for Politics, Left-Center · not rated by AllSides", url: "https://mediabiasfactcheck.com/uva-center-for-politics-bias/" },
+    Fox: { name: "Fox News", side: "R", basis: "AllSides: Right · MBFC: Right", url: "https://www.allsides.com/news-source/fox-news-media-bias" },
+    RCP: { name: "RealClearPolitics", side: "R", basis: "AllSides: Center (noted as center-right) · MBFC: Right-Center", url: "https://mediabiasfactcheck.com/real-clear-politics/" },
+    Cook: { name: "Cook Political Report", side: "I", basis: "AllSides: Center · MBFC: Least Biased", url: "https://www.allsides.com/news-source/cook-report-media-bias" },
+    Silver: { name: "Silver Bulletin", side: "I", basis: "MBFC: Least Biased", url: "https://mediabiasfactcheck.com/silver-bulletin-bias-and-credibility/" },
+
+    IE: { name: "Inside Elections", side: "I", basis: "Nonpartisan newsletter; not rated left or right", url: "https://insideelections.com/" },
+    DDHQ: { name: "Decision Desk HQ", side: "I", basis: "Nonpartisan results service; not rated left or right", url: "https://decisiondeskhq.com/" },
+    FPO: { name: "FiftyPlusOne", side: "I", basis: "Not rated left or right", url: "https://fiftyplusone.news/" },
+    ST: { name: "Split Ticket", side: "I", basis: "Not rated left or right", url: "https://split-ticket.org/" },
+  };
+  M.sourceLean = (by) => M.SOURCE_LEAN[String(by).replace(/\.$/, "")] ?? { name: by, side: "I", basis: "Not rated left or right" };
+
   M.forecast = (opts = {}) => {
     const climate = M.climateParts(opts.climate);
     const swing = climate.value - M.houseNationalMargin24;
@@ -515,13 +554,14 @@
       r.economyEffect ??= 0;
       r.fundamentals = round1(margin + r.approvalEffect + r.moneyEffect + r.economyEffect);
 
-      // ---- Combine every independent signal by inverse-variance weighting ----
-      // Each signal is an estimated Democratic margin with an uncertainty (σ). Polls, expert ratings
-      // and markets partly react to one another, so their weights are discounted by 40%.
+      // ---- Equal thirds: Democratic-leaning, independent and Republican-leaning sources ----
+      // Every piece of evidence is an estimated Democratic margin with an uncertainty (σ). Each source
+      // is placed in one of three groups (M.SOURCE_LEAN); signals within a group are combined by
+      // inverse-variance weighting, then the three groups count exactly one third each.
       // Governor races split from federal partisanship far more often (Scott, Ayotte, Beshear),
       // so their fundamentals carry more uncertainty.
       const fundSigma = r.office === "governor" ? 10 : r.sigma;
-      const signals = [{ key: "fundamentals", label: "Fundamentals (vote history, special-election climate, incumbency, qualifications, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
+      const signals = [{ key: "fundamentals", side: "I", label: "Fundamentals (vote history, special-election climate, incumbency, qualifications, money, economy)", margin: r.fundamentals, sigma: fundSigma }];
       // Head-to-head polls are deliberately NOT used (owner's choice): the forecast relies on votes
       // already cast, money, the economy, expert ratings and prediction markets.
       const pr = P?.races[r.id];
@@ -530,27 +570,63 @@
       const rt = SIG().ratings[r.id] ?? (r.office === "senate" ? SIG().ratings[r.id.replace(/-S$/, "")] : null);
       if (rt) {
         r.ratings = rt;
-        const allSafe = rt.ratings.every((x) => Math.abs(x.margin) === 15);
-        signals.push({ key: "ratings", label: `Expert ratings (${rt.ratings.length} forecasters)`, margin: rt.margin, sigma: allSafe ? 10 : 6, discount: 0.6 });
+        for (const side of ["D", "I", "R"]) {
+          const xs = rt.ratings.filter((x) => M.sourceLean(x.by).side === side);
+          if (!xs.length) continue;
+          const allSafe = xs.every((x) => Math.abs(x.margin) === 15);
+          signals.push({ key: `ratings-${side}`, side, label: `Expert ratings: ${xs.map((x) => M.sourceLean(x.by).name).join(", ")}`, margin: round1(mean(xs.map((x) => x.margin))), sigma: allSafe ? 10 : 6, discount: 0.6 });
+        }
       }
-      const mk = SIG().markets[r.id] ?? (r.office === "senate" ? SIG().markets[r.id.replace(/-S$/, "")] : null); // Kalshi lists specials under the state
+      const forState = (tbl) => tbl?.[r.id] ?? (r.office === "senate" ? tbl?.[r.id.replace(/-S$/, "")] : null); // markets list specials under the state
+      const mk = forState(SIG().markets);
+      const pm = forState(SIG().polymarkets);
+      const sideName = r.challenger === "I" ? "Osborn" : "D";
       if (mk) {
         r.market = mk;
-        signals.push({ key: "markets", label: `Prediction market (Kalshi: ${Math.round(mk.pD * 100)}% ${r.challenger === "I" ? "Osborn" : "D"})`, margin: round1(M.normInv(clamp(mk.pD, 0.02, 0.98)) * 6), sigma: 5, discount: 0.6 });
+        signals.push({ key: "markets", side: "I", label: `Prediction market (Kalshi: ${Math.round(mk.pD * 100)}% ${sideName})`, margin: round1(M.normInv(clamp(mk.pD, 0.02, 0.98)) * 6), sigma: 5, discount: 0.6 });
       }
-      // Robustness: when race-specific evidence (polls, ratings, markets) agrees and the fundamentals
+      if (pm) {
+        r.polymarket = pm;
+        signals.push({ key: "polymarket", side: "I", label: `Prediction market (Polymarket: ${Math.round(pm.pD * 100)}% ${sideName})`, margin: round1(M.normInv(clamp(pm.pD, 0.02, 0.98)) * 6), sigma: 5, discount: 0.6 });
+      }
+      // Markets sometimes list a party ("Democratic party", "Nixon (Democratic nominee)") instead of a person.
+      const person = (n) => (n && /\S\s+\S/.test(n) && !/\b(party|nominee|democrats?|democratic|republicans?|candidate|other|independent)\b/i.test(n) ? n : null);
+      const mD = person(pm?.D) ?? person(mk?.D), mR = person(pm?.R) ?? person(mk?.R);
+      if (!r.nominees && mD && mR) r.nominees = { D: mD, R: mR, fromMarket: true };
+      // Robustness: when race-specific evidence (ratings, markets) agrees and the fundamentals
       // sit more than 8 points away from its average, widen the fundamentals' σ in proportion.
       if (signals.length >= 2) {
         const others = signals.slice(1);
         const gap = Math.abs(r.fundamentals - mean(others.map((x) => x.margin)));
         if (gap > 8) { signals[0].sigma = round1(signals[0].sigma * (gap / 8)); signals[0].label += ` — down-weighted, ${round1(gap)} pts from the ratings and markets`; }
       }
-      let wsum = 0, msum = 0;
-      for (const sg of signals) { sg.w = (sg.discount ?? 1) / sg.sigma ** 2; wsum += sg.w; msum += sg.w * sg.margin; }
-      for (const sg of signals) sg.share = Math.round((sg.w / wsum) * 100);
+      // Combine within each group.
+      const thirds = [];
+      for (const side of ["D", "I", "R"]) {
+        const sg = signals.filter((x) => x.side === side);
+        if (!sg.length) continue;
+        let wsum = 0, msum = 0;
+        // Signals that read the same news are discounted against each other — not when one stands alone.
+        for (const x of sg) { x.w = (sg.length > 1 ? x.discount ?? 1 : 1) / x.sigma ** 2; wsum += x.w; msum += x.w * x.margin; }
+        for (const x of sg) x.within = x.w / wsum;
+        thirds.push({ side, label: M.SIDE_LABEL[side], margin: round1(msum / wsum), sigma: round1(1 / Math.sqrt(wsum)), n: sg.length });
+      }
+      // Both partisan groups or neither: if only one side rated a race, using it alone would tilt the
+      // forecast, so the race falls back to the independent group.
+      const balanced = thirds.length === 3 ? thirds : thirds.filter((t) => t.side === "I");
+      for (const t of thirds) t.weight = balanced.includes(t) ? 1 / balanced.length : 0;
+      for (const x of signals) x.share = Math.round((thirds.find((t) => t.side === x.side).weight * x.within) * 100);
+      // The groups' errors are partly shared (forecasters and traders read the same news): ρ = 0.5.
+      let m = 0, v = 0;
+      for (const a of balanced) {
+        m += a.weight * a.margin;
+        for (const b of balanced) v += a.weight * b.weight * a.sigma * b.sigma * (a === b ? 1 : CORR_THIRDS);
+      }
+      r.thirds = thirds;
+      r.balanced = balanced.length === 3;
       r.signals = signals;
-      r.margin = round1(msum / wsum);
-      r.sigma = round1(Math.max(1 / Math.sqrt(wsum), 3.5));
+      r.margin = round1(m);
+      r.sigma = round1(Math.max(Math.sqrt(v), 3.5));
       r.pD = M.normCdf(r.margin / r.sigma);
       r.rating = M.rating(r.pD);
       r.elasticity = el;

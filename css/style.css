@@ -381,3 +381,32 @@ td.empty { padding: 28px 16px; text-align: center; color: var(--muted); }
   .my-state-btn, .install-btn { padding: 5px 7px; font-size: 12px; }
 }
 @media (max-width: 420px) { .tabs button { padding: 8px 5px; font-size: 14px; } }
+
+/* ---------- Equal-thirds evidence table ---------- */
+table.signals tr.group th, table.signals tr.group td { font-weight: 700; background: var(--surface-2); border-top: 1px solid var(--line); }
+table.signals tr.group th { text-align: left; border-left: 4px solid var(--muted); }
+table.signals tr.group.D th { border-left-color: var(--dem); }
+table.signals tr.group.R th { border-left-color: var(--rep); }
+table.signals tr.sub td:first-child { padding-left: 22px; color: var(--muted); }
+.lean-tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 0 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.lean-tag.D { color: var(--dem); border-color: currentColor; }
+.lean-tag.R { color: var(--rep); border-color: currentColor; }
+
+/* ---------- Photos ---------- */
+.face { flex: none; width: 40px; height: 40px; border-radius: 50%; object-fit: cover; object-position: 50% 20%; background: var(--surface-2); border: 2px solid var(--oth); }
+.face.R { border-color: var(--rep); } .face.D { border-color: var(--dem); } .face.I { border-color: var(--ind); }
+.face.lg, .avatar.lg { width: 64px; height: 64px; font-size: 20px; }
+.face.md, .avatar.md { width: 52px; height: 52px; font-size: 17px; }
+.face.sm, .avatar.sm { width: 34px; height: 34px; font-size: 12px; }
+.del-person > summary .face, .del-person > summary .avatar { grid-row: span 2; }
+.del-name .chip { margin-left: 4px; vertical-align: 1px; }
+.matchup { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.nominee { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 0 1 auto; }
+.nominee b { display: block; line-height: 1.2; }
+.nominee .chip { margin: 2px 6px 0 0; }
+.nominee small { color: var(--muted); font-size: 12px; }
+.matchup .vs { color: var(--muted); font-size: 13px; font-weight: 700; }
+.gov-line { display: flex; align-items: center; gap: 8px; margin: 6px 0 4px; }
+.face.xs, .avatar.xs { width: 26px; height: 26px; font-size: 10px; border-width: 1.5px; }
+.mini-faces { display: flex; flex: none; margin-top: 1px; }
+.mini-faces > :last-child { margin-left: -8px; }
