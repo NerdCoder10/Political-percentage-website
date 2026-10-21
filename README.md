@@ -7,7 +7,7 @@ An interactive U.S. political map. It needs no build step: open `index.html` in 
   - **Current leaders** (President and national leadership, governors, all 100 senators, all 435 House members, mayors, county executives), each with a **short biography, qualification score and possible next moves**.
   - The **1,000-point Government Performance Rubric** for the nation and every state.
   - The House delegation, with a percentage breakdown for every congressional district.
-- **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. A generic-ballot slider re-runs every race.
+- **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. The national lean is neutral: no tilt toward either party.
 - **Races by State tab.** Only one state's governor, Senate and House races, plus a **My state** panel of its governor, senators and representatives that is available on every tab.
 - **Rubric & Methodology tab.** The full scoring rubric, weights and goalposts, state rankings, and every formula.
 
@@ -62,7 +62,7 @@ npm run serve              # optional: http://localhost:8080
 **Political orientation.** Each area's vote shares are built as follows:
 1. Weight the presidential vote shares at 60% (2024), 30% (2020) and 10% (2016).
 2. Add 20% of the 2020→2024 trend.
-3. Shift by the national generic-ballot climate. Competitive areas move more than lopsided ones.
+3. Shift to a neutral national lean (an even national vote). Competitive areas move more than lopsided ones.
 4. Split the non-major vote into **Independent** (60% of third-party voters, plus up to 7% ticket-splitters in competitive areas) and **Other**.
 
 Congressional districts blend the 2024 House vote with the state vote. Cities start from their county's vote plus an urban-core adjustment.
@@ -85,7 +85,7 @@ Each indicator is scored against fixed best and worst goalposts, so a state's sc
 
 **Midterm forecast.** Each race's fundamentals margin is:
 
-partisan baseline + national climate + incumbency + public approval + qualification edge + documented personal vote
+partisan baseline + neutral national lean + incumbency + public approval + qualification edge + documented personal vote
 
 The fundamentals are then averaged with expert ratings and prediction markets in three equal thirds (Democratic-leaning, independent, Republican-leaning sources; see below). The win probability is Φ(margin ÷ σ). Chamber control comes from 20,000 simulations that share a national polling error.
 
@@ -94,9 +94,9 @@ The fundamentals are then averaged with expert ratings and prediction markets in
 The site uses **no public opinion polls** anywhere. Even the largest opinion polls reach well under 0.1% of voters. Instead it relies on measures where **at least 7% of voters** took part, all of them actual ballots:
 
 1. **2026 primary ballots.** Votes cast for each party's candidates in every race's primaries, read from each race's Wikipedia results tables by `scripts/fetch-signals.mjs`. A race uses them only if they reach 7% of its 2024 electorate; today's range is 10–57%.
-   - Primary turnout runs high for whichever party is more energized everywhere at once, and special elections already measure that. So only each race's gap *relative to the average race* counts, at half strength. The correction is the same for both parties.
+   - Primary turnout runs high for whichever party is more energized everywhere at once, and the forecast keeps a neutral national lean. So only each race's gap *relative to the average race* counts, at half strength. The correction is the same for both parties.
    - Uncertainty: σ 5 for top-two primaries, 8 when both parties' primaries were contested, and 11 otherwise.
-2. **2025–26 special elections.** These set the national climate, in place of the generic-ballot poll.
+2. **A neutral national lean** replaces the generic-ballot poll: an even national vote, with no tilt toward either party.
 3. **Each governor's own last general election.**
    - It gives incumbents running again a personal vote: ½ × (their last margin − their party's presidential margin in the state that cycle).
    - It also feeds their modeled approval.
@@ -106,13 +106,13 @@ The site uses **no public opinion polls** anywhere. Even the largest opinion pol
 
   95% × (50 + support ÷ 2 + economy)
 
-  - *Support* is the governor's 2026 forecast margin, or their own last election margin if they are not on the ballot. For the President it is the special-election climate.
+  - *Support* is the governor's 2026 forecast margin, or their own last election margin if they are not on the ballot. For the President it is the neutral national lean.
   - *Economy* is the state's unemployment and GDP growth compared with the nation.
 
   Modeled approval feeds the rubric's Public Opinion category.
 - **A modeled likely-voter poll** for every race. It is the predicted vote with an undecided share (3–9%) that grows with the race's uncertainty.
 
-`data/polling.js` still holds the special-election results, primary-season events and official indicator updates. The poll numbers stored there are not used.
+`data/polling.js` still holds primary-season events and official indicator updates. The poll numbers stored there are not used.
 
 ## How the forecast combines evidence (no polls, equal thirds)
 
@@ -121,7 +121,7 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 | Group | Evidence |
 | --- | --- |
 | **Democratic-leaning sources** (⅓) | Expert ratings from The Economist and Sabato's Crystal Ball (and NBC News whenever it publishes ratings) |
-| **Independent sources** (⅓) | Fundamentals (vote history, Cook PVI, climate from special elections, incumbency, qualifications, FEC money, state economy, governors' personal vote); 2026 primary ballots; ratings from Cook, Inside Elections, Decision Desk HQ, Silver Bulletin, Split Ticket and FiftyPlusOne; prediction markets (Kalshi, Polymarket) |
+| **Independent sources** (⅓) | Fundamentals (vote history, Cook PVI, neutral national lean, incumbency, qualifications, FEC money, state economy, governors' personal vote); 2026 primary ballots; ratings from Cook, Inside Elections, Decision Desk HQ, Silver Bulletin, Split Ticket and FiftyPlusOne; prediction markets (Kalshi, Polymarket) |
 | **Republican-leaning sources** (⅓) | Expert ratings from Fox News and RealClearPolitics |
 
 - **Classification rule.** An outlet is Democratic- or Republican-leaning when [AllSides](https://www.allsides.com/media-bias/ratings) or [Media Bias/Fact Check](https://mediabiasfactcheck.com/) rates it left or right of center and neither rates it the other way. Everything else is independent. The full table, with each rating, is on the Methodology tab and in `M.SOURCE_LEAN` in `js/model.js`.
@@ -186,7 +186,7 @@ npm run check
   - GitHub only runs scheduled workflows from the repository's **default branch**, so the schedule starts once this branch is merged into `main`.
   - Add a repository secret `DATA_CONTACT_EMAIL` (Settings → Secrets and variables → Actions). The labor statistics bureau requires a contact address.
   - For visitors to see refreshed data, host the site from `main`, for example with GitHub Pages.
-- **What doesn't auto-refresh:** curated officeholders (`data/leaders.js`) and special-election results (`data/polling.js`) are reviewed by hand.
+- **What doesn't auto-refresh:** curated officeholders (`data/leaders.js`) are reviewed by hand.
 - **Source update frequency:** most agencies publish monthly or annually, so most 30-minute runs find nothing new and make no commit.
 
 ## Limitations

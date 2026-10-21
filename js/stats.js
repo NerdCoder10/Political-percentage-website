@@ -9,7 +9,7 @@
   const CURATED = {
     credit: { source: "S&P Global Ratings, state general-obligation credit ratings (curated; S&P publishes no free data feed)", url: "https://www.spglobal.com/ratings/en/", vintage: "2025–26" },
     pension: { source: "Pew Charitable Trusts and Equable Institute, state public-pension funded ratios (curated)", url: "https://www.pewtrusts.org/", vintage: "FY2023–24" },
-    approval: { source: "Modeled approval (our own estimate, no public polls): each governor's 2026 forecast margin or own last election, plus the state economy; the national climate from special elections for the President. Formula under Rubric & Methodology", url: null, vintage: "2026" },
+    approval: { source: "Modeled approval (our own estimate, no public polls): each governor's 2026 forecast margin or own last election, plus the state economy; the neutral national lean (an even vote) for the President. Formula under Rubric & Methodology", url: null, vintage: "2026" },
     crossover: { source: "Computed: approval minus the approval expected from the state's partisan lean (50 + half the governor's party lead)", url: null, vintage: "2025–26" },
   };
   const sourceFor = (key) => {
