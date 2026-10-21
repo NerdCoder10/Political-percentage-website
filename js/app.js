@@ -617,10 +617,7 @@
         ${split(c.senate.pD)}<div class="sub">Expected: <b class="txt-D">${c.senate.expectedD} D/I</b> – <b class="txt-R">${100 - c.senate.expectedD} R</b>. Democrats need 51 (VP breaks ties for R). Not up: ${c.senate.holdover.D} D/I, ${c.senate.holdover.R} R.</div></div>
       <div class="card"><div class="label">Governorships after 2026</div>
         <div class="big"><span class="txt-D">${govD} D</span> · <span class="txt-R">${50 - govD} R</span></div>
-        ${split(govD / 50)}<div class="sub">${gov.length} races on the ballot; expected value from race probabilities.</div></div>
-      <div class="card"><div class="label">National lean</div>
-        <div class="big">Neutral</div>
-        <div class="sub">No national tilt toward either party is assumed: an even (50–50) national vote. Each race rests on its own evidence. No public polls are used.<br>For reference, the 2024 House vote was ${gbLabel(Math.round(M.houseNationalMargin24 * 10) / 10)}.</div></div>`;
+        ${split(govD / 50)}<div class="sub">${gov.length} races on the ballot; expected value from race probabilities.</div></div>`;
     renderRaceTable();
   }
 
