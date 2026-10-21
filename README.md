@@ -2,7 +2,7 @@
 
 An interactive U.S. political map. It needs no build step: open `index.html` in a browser.
 
-- **Map & Leaders tab.** A full-screen U.S. map colored red or blue by each state's current political lean. Click a state, then any county or city dot, to drill down. Every level shows:
+- **Map & Leaders tab.** A full-screen U.S. map colored red or blue by each state's current political lean. Toss-ups (a lean within 3 points of even) are gray. Click a state, then any county or city dot, to drill down. Every level shows:
   - **Republican / Democratic / Independent / Other popular-vote percentages**, from the lean algorithm.
   - **Current leaders** (President and national leadership, governors, all 100 senators, all 435 House members, mayors, county executives), each with a **short biography, qualification score and possible next moves**.
   - The **1,000-point Government Performance Rubric** for the nation and every state.

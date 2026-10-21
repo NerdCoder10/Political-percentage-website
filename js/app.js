@@ -27,8 +27,9 @@
   let races = raceById();
 
   // ------------------------------------------------------------------ colors
-  let palette;
+  let palette, tossupColor;
   const buildPalette = () => {
+    tossupColor = css("--tossup");
     const rep = css("--rep"), dem = css("--dem"), soft = css("--surface");
     palette = d3.scaleLinear()
       .domain([-40, -0.01, 0.01, 40])
@@ -36,7 +37,9 @@
       .clamp(true);
   };
   buildPalette();
-  const fillFor = (lean) => palette(lean.margin);
+  // Toss-ups — a lean within 3 points of even — are gray rather than pale red or blue.
+  const TOSSUP = 3;
+  const fillFor = (lean) => (Math.abs(lean.margin) < TOSSUP ? tossupColor : palette(lean.margin));
 
   // ------------------------------------------------------------------ map
   const mapEl = $("#map");
