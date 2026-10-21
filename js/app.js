@@ -56,6 +56,8 @@
     .append("circle").attr("cx", 0.5).attr("cy", 0.5).attr("r", 0.5);
   const tooltip = $("#tooltip");
   const mayorOf = (c) => MAYORS[`${c[0]}|${c[1]}`];
+  const placeKind = (c) => (c[6] === "town" ? "Town" : "City");
+  const leaderText = (l) => (l ? (l.board ? `${l.title} (${l.name})` : `${l.title} ${l.name}${l.party && l.party !== "X" ? ` (${l.party})` : ""}`) : "");
 
   const statePaths = gStates.selectAll("path").data(stateFeatures).join("path")
     .attr("class", "state").attr("d", path)
@@ -113,8 +115,8 @@
   }
 
   function cityTip(e, c) {
-    const m = mayorOf(c);
-    showTip(e, `${c[0]}, ${c[1]}`, cityLean(c.idx), m ? `<div>Mayor ${esc(m.name)} <span class="chip ${m.party}">${m.party}</span></div>` : "");
+    const l = M.localLeader(c);
+    showTip(e, `${c[0]}, ${c[1]}`, cityLean(c.idx), `<div>${l ? `${esc(l.title)} ${esc(l.name)}${l.party && l.party !== "X" ? ` <span class="chip ${l.party}">${l.party}</span>` : ""}` : "No mayor there"}</div>`);
   }
 
   let colorMode = "states";
@@ -146,8 +148,12 @@
       .attr("class", "city-label").classed("has-mayor", (c) => !!mayorOf(c))
       .attr("x", (c) => c.xy[0]).attr("y", (c) => c.xy[1])
       // At state level the photo identifies the mayor; zoomed into a county or city there is room for the name.
-      .text((c) => (mayorOf(c) && view.level !== "state" ? `${c[0]} · Mayor ${mayorOf(c).name}`
-        : view.level === "city" && c.idx === view.city ? `${c[0]} · No mayor there` : c[0]));
+      // Only the selected city or town carries its leader's name; the rest stay short so labels don't collide.
+      .text((c) => {
+        if (view.level !== "city" || c.idx !== view.city) return c[0];
+        const l = M.localLeader(c);
+        return l ? `${c[0]} · ${leaderText(l)}` : `${c[0]} · No mayor there`;
+      });
     // Mayor photos (or a party-colored ring when there is no photo) on cities with a mayor on file.
     gMayors.selectAll("g.mayor").data(list.filter((c) => mayorOf(c)), (c) => c.idx).join((enter) => {
       const g = enter.append("g").attr("class", "mayor");
@@ -183,7 +189,7 @@
     else if (view.level === "county") fit(path.bounds(countyFeatures.find((f) => f.id === view.fips)), 0.5, animate);
     else if (view.level === "city") {
       // City level: a box around the city itself, sized by population (not the whole county).
-      const c = CITIES[view.city], d = 4 + Math.sqrt(c[2]) / 90;
+      const c = CITIES[view.city], d = 2 + Math.sqrt(c[2]) / 150; // ~2.5 map units for a small town, ~15 for Los Angeles
       if (c.xy) fit([[c.xy[0] - d, c.xy[1] - d], [c.xy[0] + d, c.xy[1] + d]], 0.8, animate);
       else fit(path.bounds(countyFeatures.find((f) => f.id === view.fips)), 0.7, animate);
     }
@@ -208,8 +214,8 @@
     if (inCounty && list.length < 2) list = citiesByState.get(view.st) ?? []; // a county with one city: offer the state's
     list = [...list].sort((a, b) => b[2] - a[2]);
     box.hidden = !list.length;
-    const label = (c) => { const m = mayorOf(c); return `${c[0]} — ${m ? `Mayor ${m.name} (${m.party})` : "no mayor listed"}`; };
-    $("#city-zoom-select").innerHTML = `<option value="">Zoom to a city${inCounty && view.level !== "city" ? " in this county" : ""}…</option>`
+    const label = (c) => { const l = M.localLeader(c); return `${c[0]} — ${l ? leaderText(l) : "no mayor listed"}`; };
+    $("#city-zoom-select").innerHTML = `<option value="">Zoom to a city or town${inCounty && view.level !== "city" ? " in this county" : ""}…</option>`
       + list.map((c) => `<option value="${c.idx}" ${c.idx === view.city ? "selected" : ""}>${esc(label(c))}</option>`).join("");
   }
   $("#city-zoom-select").addEventListener("change", (e) => {
@@ -418,8 +424,27 @@
       </section>`;
   }
 
+  // A place's leader from its Wikipedia infobox (no curated bio), or "No mayor there".
+  function localLeaderCard(c) {
+    const l = M.localLeader(c);
+    if (!l) return `<div class="note"><b>No mayor there.</b> No mayor, first selectman or other local leader is listed for ${esc(c[0])}.</div>`;
+    if (l.board) return `<article class="leader"><div class="leader-name">${esc(l.title)}</div>
+        <div class="leader-office">${esc(c[0])} has no mayor; its ${esc(l.title.toLowerCase())} governs (no chair listed).</div>
+        <ul class="sources">${l.members.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>
+        <div class="fine">Source: <a href="${esc(l.url)}" target="_blank" rel="noopener">Wikipedia</a> (the ${esc(c[0])} article's infobox).</div></article>`;
+    return `<article class="leader"><div class="leader-top">${face({ name: l.name, party: l.party }, "lg")}<div>
+        <div class="leader-name">${esc(l.name)}${l.party && l.party !== "X" ? ` <span class="chip ${l.party}">${l.party}</span>` : ` <span class="chip X">Nonpartisan</span>`}</div>
+        <div class="leader-office">${esc(l.title)} of ${esc(c[0])}</div>
+        <div class="fine">Source: <a href="${esc(l.url)}" target="_blank" rel="noopener">Wikipedia</a> (the ${esc(c[0])} article's infobox).</div></div></div></article>`;
+  }
+
   // Mayors of the curated cities in a list, each expandable to a full profile.
-  function mayorsSection(cities, title) {
+  function mayorsSection(cities, title, { all = false } = {}) {
+    if (all) {
+      const ls = [...cities].sort((a, b) => b[2] - a[2]);
+      if (!ls.length) return "";
+      return `<section><h3>${esc(title)}</h3><ul class="link-list">${ls.map((c) => { const l = M.localLeader(c); return `<li><button data-nav="city:${c.idx}">${esc(c[0])}</button><span class="fine">${l ? `${esc(l.title)} ${esc(l.name)}${l.party && l.party !== "X" ? ` <span class="chip ${l.party}">${l.party}</span>` : ""}` : "No mayor there"}</span></li>`; }).join("")}</ul></section>`;
+    }
     const rows = cities.map((c) => [c, mayorOf(c)]).filter(([, m]) => m);
     if (!rows.length) return "";
     return `<section><h3>${esc(title)}</h3>
@@ -427,7 +452,7 @@
         <span class="del-sub">Mayor of ${esc(c[0])} · since ${m.since}${m.up2026 ? " · on the 2026 ballot" : ""}</span></summary>
         ${leaderCard(withState(m, c[1]), `Mayor of ${c[0]}`, "mayor", { open: true })}
         <p><button class="btn-ghost" data-nav="city:${c.idx}">Open ${esc(c[0])} on the map</button></p></details>`).join("")}
-      <p class="fine">Mayors are curated for about 85 of the largest U.S. cities; their photos also appear on the map.</p></section>`;
+      <p class="fine">Full profiles for about 85 of the largest cities. Every other city and town on the map shows its mayor or first selectman when you tap it or use Zoom to a city.</p></section>`;
   }
 
   function districtRow(st, d) {
@@ -478,8 +503,7 @@
       ${leanBlock(l, note)}
       ${v ? `<p class="fine">2024 presidential: ${d3.format(",")(v[3])} votes · R ${fmt((100 * v[0]) / v[3])}% · D ${fmt((100 * v[1]) / v[3])}% · other ${fmt((100 * v[2]) / v[3])}%</p>` : ""}
       <section><h3>County leadership</h3>${countyLeaderBlock(fips)}</section>
-      ${mayorsSection(cities, "Mayors in this county")}
-      ${cities.length ? `<section><h3>Cities in this county</h3><ul class="link-list">${cities.map((ct) => `<li><button data-nav="city:${ct.idx}">${esc(ct[0])}</button><span class="fine">${d3.format(",")(ct[2])}</span></li>`).join("")}</ul></section>` : ""}
+      ${mayorsSection(cities, "Cities & towns and their leaders", { all: true })}
       ${stateContext(c.st)}`;
   }
 
@@ -490,14 +514,13 @@
     const mayor = MAYORS[`${name}|${st}`];
     const county = ELECTIONS.counties[fips];
     const multi = M.MULTI_COUNTY_CITIES[`${name}|${st}`];
-    const note = multi ? "Combined popular vote of all five boroughs."
+    const note = multi ? "Combined popular vote of all five boroughs." : c[6] === "town" ? `Estimated from ${esc(county.n)}'s vote (town results are not compiled nationally).`
       : `Estimated from ${esc(county.n)}'s vote${l.countyShare < 0.98 ? ` plus an urban-core adjustment (${name} is ~${Math.round(l.countyShare * 100)}% of the county; adjustment shifts the margin ${fmt(l.urbanShift * 100)} pts toward Democrats)` : ""}.`;
-    return `<div class="kicker">City · ${esc(county?.n ?? "")}, ${st}</div><h2>${esc(name)}</h2>
+    return `<div class="kicker">${placeKind(c)} · ${esc(county?.n ?? "")}, ${st}</div><h2>${esc(name)}</h2>
       <p class="hint">Population ${d3.format(",")(pop)}</p>
       ${leanBlock(l, note)}
-      <section><h3>City leadership</h3>
-        ${mayor ? leaderCard(withState(mayor, st), `Mayor of ${name}`, "mayor", { open: true })
-          : `<div class="note"><b>No mayor there.</b> ${esc(name)} has no mayor in this app's list, which covers about 85 of the largest cities.</div>`}
+      <section><h3>${placeKind(c)} leadership</h3>
+        ${mayor ? leaderCard(withState(mayor, st), `Mayor of ${name}`, "mayor", { open: true }) : localLeaderCard(c)}
       </section>
       <section><h3>County</h3>
         <ul class="link-list"><li><button data-nav="county:${fips}">${esc(county.n)}</button>${miniLean(countyLean[fips])}</li></ul>
@@ -510,7 +533,7 @@
   const searchIndex = [
     ...Object.values(M.states).map((s) => ({ label: s.name, sub: "State", nav: `state:${s.abbr}`, key: s.name.toLowerCase() + " " + s.abbr.toLowerCase() })),
     ...countyFeatures.map((f) => { const c = ELECTIONS.counties[f.id]; return { label: c.n, sub: `County · ${c.st}`, nav: `county:${f.id}`, key: (c.n + " " + c.st).toLowerCase() }; }),
-    ...CITIES.map((c) => ({ label: c[0], sub: `City · ${c[1]}`, nav: `city:${c.idx}`, key: (c[0] + " " + c[1]).toLowerCase(), pop: c[2] })),
+    ...CITIES.map((c) => ({ label: c[0], sub: `${placeKind(c)} · ${c[1]}`, nav: `city:${c.idx}`, key: (c[0] + " " + c[1]).toLowerCase(), pop: c[2] })),
   ];
   const searchEl = $("#search"), resultsEl = $("#search-results");
   let active = -1;

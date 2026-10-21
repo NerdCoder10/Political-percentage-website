@@ -5,6 +5,9 @@
 //   4. 2026 midterm forecast (win probabilities for every Senate, House and Governor race)
 (function () {
   const G = globalThis;
+  // New England towns (data/generated/local.js) join the 1,000 largest cities as map places:
+  // [name, state, population, lon, lat, county FIPS, "town"].
+  if (G.LOCAL?.towns?.length && G.CITIES && !G.CITIES.townsAdded) { G.CITIES.push(...G.LOCAL.towns); G.CITIES.townsAdded = true; }
   const M = {};
   const YEAR = 2026;
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -157,7 +160,9 @@
   // Cities that span several counties are scored on the combined vote of all of them.
   M.MULTI_COUNTY_CITIES = { "New York|NY": ["36061", "36047", "36081", "36005", "36085"] };
   M.cityLean = (city, o = {}) => {
-    const [name, st, pop, , , fips] = city;
+    const [name, st, pop, , , fips, kind] = city;
+    // Towns (mostly small and rural) use their county's vote with no urban-core adjustment.
+    if (kind === "town") return { ...M.lean(M.countyShares(fips), o), countyShare: 1, urbanShift: 0 };
     const multi = M.MULTI_COUNTY_CITIES[`${name}|${st}`];
     if (multi) {
       const add = (y) => multi.reduce((acc, f) => acc.map((v, i) => v + (E().counties[f][y]?.[i] ?? 0)), [0, 0, 0, 0]);
@@ -479,6 +484,21 @@
     const dg = (indicator(st, "gdp") ?? 0) - (indicator("US", "gdp") ?? 0);
     if (office === "governor") return round1((governorParty === "D" ? 1 : -1) * clamp(-0.6 * du + 0.3 * dg, -2, 2));
     return round1(clamp(0.3 * du, -1.5, 1.5)); // president is a Republican, so this moves toward Democrats
+  };
+
+  // ---- Local leaders ----
+  // Curated mayors (data/leaders.js, with bios) first; otherwise the head of the local government from
+  // the place's Wikipedia infobox (data/generated/local.js): mayor, first selectman, selectboard chair,
+  // supervisor, council president or town manager.
+  M.localLeader = (city) => {
+    const [name, st] = city;
+    const curated = G.MAYORS?.[`${name}|${st}`];
+    if (curated) return { ...curated, title: "Mayor", curated: true };
+    const l = G.LOCAL?.leaders?.[`${name.replace(/ Town$/, "")}|${st}`];
+    if (!l?.name) return null;
+    // A board with no chair listed: shown as the board, not as one person.
+    if (l.board) { const members = l.name.split(", "); return { name: `${members.length} members`, members, title: l.title, party: "X", url: l.url, board: true }; }
+    return { name: l.name, title: l.title, party: l.party === "N" ? "X" : l.party, url: l.url };
   };
 
   // ---- People's photos ----
