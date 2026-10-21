@@ -16,6 +16,7 @@
   ],
   "shortcuts": [
     { "name": "2026 Midterm Forecast", "url": "./#midterms", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Races by State", "url": "./#races", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Statistics & Sources", "url": "./#stats", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
     { "name": "Rubric & Methodology", "url": "./#method", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
   ]

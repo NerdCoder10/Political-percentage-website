@@ -8,6 +8,7 @@ An interactive U.S. political map. It needs no build step: open `index.html` in 
   - The **1,000-point Government Performance Rubric** for the nation and every state.
   - The House delegation, with a percentage breakdown for every congressional district.
 - **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. A generic-ballot slider re-runs every race.
+- **Races by State tab.** Only one state's Senate and House races, plus a **My state** panel of its senators and representatives that is available on every tab.
 - **Rubric & Methodology tab.** The full scoring rubric, weights and goalposts, state rankings, and every formula.
 
 ## Install it on your phone
@@ -27,6 +28,15 @@ The **Stats** tab shows every statistic behind the 1,000-point rubric.
 - Pick a measure to see a ranked dot plot of all 50 states with the national figure. Dashed lines mark the scoring goalposts, and hovering or tapping a state shows its points.
 - A card names the source agency, dataset, data year and link.
 - A full table lists every measure for every state, ranked by total score. Each column is footnoted to a numbered source list, followed by the other datasets the app uses.
+
+## Races by State tab
+
+The **Races** tab researches one state at a time. Pick a state to see only its 2026 **Senate and House** races. You can filter to Senate or House and sort by district or by closest race. Each race card shows:
+- the incumbent, the nominees, the rating and the win probability;
+- expandable evidence: fundamentals, expert ratings, Kalshi markets, FEC money and the district's lean;
+- the incumbent's biography.
+
+**My state (every tab).** The **My state** button in the top bar opens a panel with that state's two senators and every House member, with bios. It works from any tab. The state is remembered on the device, and it updates whenever you pick a state in the Races tab, the Midterms state filter or the map.
 
 ## Run it
 
