@@ -127,6 +127,17 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 - **Classification rule.** An outlet is Democratic- or Republican-leaning when [AllSides](https://www.allsides.com/media-bias/ratings) or [Media Bias/Fact Check](https://mediabiasfactcheck.com/) rates it left or right of center and neither rates it the other way. Everything else is independent. The full table, with each rating, is on the Methodology tab and in `M.SOURCE_LEAN` in `js/model.js`.
 - **Inside a group.** Signals are combined by precision (1 ÷ σ²). Ratings and markets get a 0.6 discount when a group holds several, and fundamentals far from the ratings and markets are down-weighted.
 - **Combining the groups.** The forecast is the plain average of the three groups. Its uncertainty assumes the groups' errors are 50% correlated.
+- **Voters who don't answer polls.** Expert ratings and prediction markets lean on polls, which miss people who never respond. Their margins are adjusted by the polls' recent measured miss (Silver Bulletin, statistical bias of the polling averages):
+
+  | Year | Polls overstated |
+  | --- | --- |
+  | 2016 | Democrats by 3.0 |
+  | 2018 | Republicans by 0.5 |
+  | 2020 | Democrats by 4.7 |
+  | 2022 | Democrats by 0.8 |
+  | 2024 | Democrats by 2.8 |
+
+  The two midterms count twice, giving 1.6 points toward Republicans. Actual-vote evidence (vote history, primary ballots) is not adjusted. The same rule would move races toward Democrats if polls had missed Republicans.
 - **Keeping it balanced.** If only one partisan side rates a race, both partisan groups are set aside and the independent group decides it. House seats that no forecaster rates as competitive rest on the independent group alone.
 
 **Predicted popular vote.** Every race also shows each side's predicted vote share, an 80% range and an estimated vote count:

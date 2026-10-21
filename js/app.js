@@ -891,6 +891,7 @@ Prediction markets (σ 5 each): Kalshi and Polymarket, Φ⁻¹(price) × 6 → i
 Governors running again: + personal vote = ½ × (their last election margin − their party's
   presidential margin in the state that cycle), from actual votes
 
+Voters who don't answer polls: ratings and markets − ${fmt(M.NONRESPONSE.value)} (recent polling miss, see below)
 Inside a group:  weight = 1 ÷ σ²  (× 0.6 for ratings and markets when a group has several
                  signals, because they partly react to each other)
 If fundamentals sit more than 8 pts from the ratings/markets average, their σ is multiplied by (gap ÷ 8).
@@ -908,6 +909,12 @@ D share       = (100 − other) ÷ 2 + vote margin ÷ 2         R share = 100 �
 80% range     = vote margin ± 1.28 σ
 Turnout       = 0.75 × the area's 2024 vote   (2018 House vote ÷ 2016 presidential = 0.83;
                 2022 ÷ 2020 = 0.68)          Est. votes = turnout × share</pre>
+      <p><b>Voters who don't answer polls.</b> Expert ratings and prediction markets lean on polls, and polls miss the people who never answer them. Fewer than 1 in 100 people contacted take part in a typical poll. In recent elections, those non-responders differed from responders, and the polling averages missed the actual results by a consistent amount. The forecast measures that miss from real results and takes it off the ratings and markets. Vote history, primary ballots and other actual votes already include every voter, so they are not adjusted.</p>
+      <div class="table-wrap"><table class="method-table">
+        <thead><tr><th>Election</th><th class="num">Polls overstated</th><th class="num">Weight</th></tr></thead>
+        <tbody>${M.NONRESPONSE.cycles.map((c) => `<tr><td>${c.year}${c.weight > 1 ? " (midterm)" : ""}</td><td class="num">${c.bias > 0 ? "Democrats by " : "Republicans by "}${fmt(Math.abs(c.bias))}</td><td class="num">×${c.weight}</td></tr>`).join("")}
+          <tr class="total"><td><b>Adjustment used</b></td><td class="num"><b>${fmt(M.NONRESPONSE.value)} pts toward ${M.NONRESPONSE.value > 0 ? "Republicans" : "Democrats"}</b></td><td></td></tr></tbody></table></div>
+      <p class="fine">Statistical bias of the polling averages against the actual results, from the <a href="${esc(M.NONRESPONSE.source)}" target="_blank" rel="noopener">Silver Bulletin's review of every cycle</a>. 2026 is a midterm, so the 2018 and 2022 midterms count twice. If polls had been missing Republicans instead, the same rule would move every race toward Democrats.</p>
       <p><b>Keeping it balanced.</b> If only one partisan side rates a race, using that side alone would tilt the result. In that case both partisan groups are set aside and the independent group decides the race. House seats that no forecaster rates as competitive are independent-only.</p>
       <p><b>How each outlet is classified.</b> An outlet is <i>Democratic-leaning</i> or <i>Republican-leaning</i> when <a href="https://www.allsides.com/media-bias/ratings" target="_blank" rel="noopener">AllSides</a> or <a href="https://mediabiasfactcheck.com/" target="_blank" rel="noopener">Media Bias/Fact Check</a> rates it left or right of center, and neither rates it the other way. Everything else is <i>independent</i>: nonpartisan handicappers, data services, prediction markets and official statistics. Head-to-head polls are not used in either group.</p>
       <div class="table-wrap"><table class="method-table">
