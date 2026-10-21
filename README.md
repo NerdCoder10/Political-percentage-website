@@ -117,6 +117,11 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 - **Combining the groups.** The forecast is the plain average of the three groups. Its uncertainty assumes the groups' errors are 50% correlated.
 - **Keeping it balanced.** If only one partisan side rates a race, both partisan groups are set aside and the independent group decides it. House seats that no forecaster rates as competitive rest on the independent group alone.
 
+**Predicted popular vote.** Every race also shows each side's predicted vote share, an 80% range and an estimated vote count:
+- **Margin:** the same equal-thirds blend as the win probability. A signal at the top of its scale (a Safe rating, or a 95%+ market) is raised to the fundamentals' margin when they agree, so landslides aren't pulled toward 50–50.
+- **Third-party share:** the 2024 non-major vote, from the district's House race or otherwise the state's presidential vote. New York and Connecticut use the presidential vote because of fusion voting.
+- **Turnout:** 0.75 × the 2024 vote, the average midterm drop-off in 2018 and 2022.
+
 **Following races:** tap ☆ next to any race, then the **Following** filter shows only your races. The list is saved on the device.
 
 ## Photos
