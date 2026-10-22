@@ -9,6 +9,7 @@ An interactive U.S. political map. It needs no build step: open `index.html` in 
   - The House delegation, with a percentage breakdown for every congressional district.
 - **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. The national lean is neutral: no tilt toward either party.
 - **Races by State tab.** Only one state's governor, Senate and House races, plus a **My state** panel of its governor, senators and representatives that is available on every tab.
+- **Congress & Court tab.** Senate, House and Supreme Court views showing every senator, representative and justice: where each sits from liberal to conservative, and how each voted on specific issues, all from recorded votes.
 - **Rubric & Methodology tab.** The full scoring rubric, weights and goalposts, state rankings, and every formula.
 
 ## Install it on your phone
@@ -147,12 +148,26 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 
 **Following races:** tap ☆ next to any race, then the **Following** filter shows only your races. The list is saved on the device.
 
+## Congress & Court tab
+
+- **Senate and House views.** Each member's political orientation is their DW-NOMINATE score for the 119th Congress, from [Voteview](https://voteview.com/data). The score is estimated from every roll-call vote they cast and runs from −1 (most liberal) to +1 (most conservative). A dot plot shows the whole chamber.
+- **Issue positions.** These are the member's own Yea/Nay votes on major 2025–26 bills: the One Big Beautiful Bill Act, Laken Riley Act, rescissions, GENIUS Act, the shutdown-ending deal, the Iran war-powers resolution, the congressional stock-trading ban, the SAVE Act / voter-ID bill, the Epstein files bill, Ukraine aid, the balanced-budget amendment, the Canada tariffs resolution and Russia sanctions.
+  - Each bill is described by what a Yea vote did.
+  - Votes against the member's party majority are flagged.
+  - Built by `scripts/fetch-congress-votes.mjs` (`npm run fetch:congress-votes`), part of the scheduled refresh.
+- **Supreme Court view.** `data/scotus.js` lists how each of the nine justices voted in 16 landmark cases from 2022–2025: Dobbs, Bruen, SFFA, Biden v. Nebraska, 303 Creative, Loper Bright, Trump v. United States, Trump v. Anderson, Fischer, Murthy, Grants Pass, Skrmetti, Trump v. CASA, FCC v. Consumers' Research, Free Speech Coalition v. Paxton and Mahmoud v. Taylor.
+  - Each case's outcome is marked as the side generally described as conservative or liberal.
+  - A justice's orientation is the share of their votes on the conservative side.
+  - Cases that split the usual blocs (Fischer, Murthy, the FCC case) keep that from simply mirroring the appointing party.
+
 ## Local leaders and New England towns
 
 `scripts/fetch-local-leaders.mjs` (`npm run fetch:local`) writes `data/generated/local.js`.
 
 - **Towns:** every New England town and city (CT, MA, RI, VT, NH, ME) comes from the Census Bureau's 2024 county-subdivision gazetteer and becomes a map place. Each town is placed in its county using the map's own county shapes. Town leans use the county's vote, because town-level results aren't compiled nationally.
 - **Leaders:** for those towns and the 1,000 largest cities, the head of local government comes from each place's Wikipedia infobox. That is the mayor, or otherwise the first selectman, selectboard chair, supervisor, council president or town manager, with party when listed.
+- **Gaps:** places whose infobox names no one get Wikidata's current "head of government" when exactly one is recorded and the entry isn't stale.
+- **Coverage today:** 950 of 1,000 cities and 326 of 1,337 New England towns. Massachusetts, New Hampshire, Vermont and Maine have no free statewide directory of selectboard chairs, so many small towns there still show "No mayor there".
 - **Curated mayors:** the ~85 curated mayors in `data/leaders.js` keep their full bios and photos.
 - **Refresh:** each place is re-checked every 30 days. Scheduled runs look up at most 150 places.
 

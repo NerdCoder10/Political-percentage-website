@@ -497,8 +497,8 @@
     const l = G.LOCAL?.leaders?.[`${name.replace(/ Town$/, "")}|${st}`];
     if (!l?.name) return null;
     // A board with no chair listed: shown as the board, not as one person.
-    if (l.board) { const members = l.name.split(", "); return { name: `${members.length} members`, members, title: l.title, party: "X", url: l.url, board: true }; }
-    return { name: l.name, title: l.title, party: l.party === "N" ? "X" : l.party, url: l.url };
+    if (l.board) { const members = l.name.split(", "); return { name: `${members.length} members`, members, title: l.title, party: "X", url: l.url, source: "Wikipedia", board: true }; }
+    return { name: l.name, title: l.title, party: l.party === "N" ? "X" : l.party, url: l.url, source: l.source ?? "Wikipedia" };
   };
 
   // ---- People's photos ----

@@ -8,12 +8,13 @@
     "build:data": "node scripts/build-data.mjs",
     "fetch:indicators": "node scripts/fetch-indicators.mjs",
     "stamp": "node scripts/stamp-version.mjs",
-    "refresh": "node scripts/build-data.mjs --refresh && node scripts/fetch-indicators.mjs --refresh && node scripts/fetch-signals.mjs --refresh && node scripts/fetch-photos.mjs && node scripts/fetch-local-leaders.mjs && node scripts/stamp-version.mjs",
+    "refresh": "node scripts/build-data.mjs --refresh && node scripts/fetch-indicators.mjs --refresh && node scripts/fetch-signals.mjs --refresh && node scripts/fetch-photos.mjs && node scripts/fetch-local-leaders.mjs && node scripts/fetch-congress-votes.mjs && node scripts/stamp-version.mjs",
     "check": "node scripts/check.mjs",
     "serve": "python3 -m http.server 8080",
     "fetch:signals": "node scripts/fetch-signals.mjs",
     "fetch:photos": "node scripts/fetch-photos.mjs",
-    "fetch:local": "node scripts/fetch-local-leaders.mjs"
+    "fetch:local": "node scripts/fetch-local-leaders.mjs",
+    "fetch:congress-votes": "node scripts/fetch-congress-votes.mjs"
   },
   "devDependencies": {
     "adm-zip": "^0.5.16",

@@ -27,6 +27,7 @@
       <button role="tab" id="tab-method" aria-controls="view-method" aria-selected="false" data-tab="method"><span class="tab-long">Rubric &amp; Methodology</span><span class="tab-short">Rubric</span></button>
       <button role="tab" id="tab-stats" aria-controls="view-stats" aria-selected="false" data-tab="stats"><span class="tab-long">Statistics &amp; Sources</span><span class="tab-short">Stats</span></button>
       <button role="tab" id="tab-races" aria-controls="view-races" aria-selected="false" data-tab="races"><span class="tab-long">Races by State</span><span class="tab-short">Races</span></button>
+      <button role="tab" id="tab-congress" aria-controls="view-congress" aria-selected="false" data-tab="congress"><span class="tab-long">Congress &amp; Court</span><span class="tab-short">Court</span></button>
     </nav>
     <button id="my-state-btn" class="my-state-btn" aria-expanded="false" aria-controls="delegation">My state</button>
     <button id="install-btn" class="install-btn" hidden>Install<span class="tab-long"> app</span></button>
@@ -106,6 +107,11 @@
   <!-- "My state" panel: senators and representatives, available on every tab -->
   <aside id="delegation" class="drawer" role="dialog" aria-label="My state's senators and representatives" hidden></aside>
 
+  <!-- TAB 6: every senator, representative and justice: orientation and issue positions -->
+  <main id="view-congress" class="view page" role="tabpanel" aria-labelledby="tab-congress" hidden>
+    <div class="page-inner" id="congress-view"></div>
+  </main>
+
   <!-- TAB 5: research Senate and House races one state at a time -->
   <main id="view-races" class="view page" role="tabpanel" aria-labelledby="tab-races" hidden>
     <div class="page-inner" id="races"></div>
@@ -135,11 +141,14 @@
   <script src="data/generated/indicators.js"></script>
   <script src="data/generated/signals.js"></script>
   <script src="data/generated/photos.js"></script>
+  <script src="data/generated/congress-votes.js"></script>
+  <script src="data/scotus.js"></script>
   <script src="data/generated/version.js"></script>
   <script src="js/model.js"></script>
   <script src="js/app.js"></script>
   <script src="js/stats.js"></script>
   <script src="js/races.js"></script>
+  <script src="js/congress.js"></script>
   <script src="js/refresh.js"></script>
   <script src="js/pwa.js"></script>
 </body>
