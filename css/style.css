@@ -472,3 +472,9 @@ td.vote.yea { box-shadow: inset 3px 0 0 #2e8b57; } td.vote.nay { box-shadow: ins
   .tabs { order: 3; flex: 1 0 100%; justify-content: space-between; gap: 0; }
   .tabs button { padding: 7px 6px; font-size: 14.5px; }
 }
+.circuit-bars .cbar { display: grid; grid-template-columns: 80px 1fr 82px; gap: 8px; align-items: center; margin: 4px 0; font-size: 13px; }
+.cbar-name { color: var(--muted); font-weight: 600; }
+.cbar-track { display: flex; gap: 2px; height: 14px; }
+.cbar-track i { display: block; height: 100%; border-radius: 3px; }
+.cbar-track i.D { background: var(--dem); } .cbar-track i.R { background: var(--rep); }
+.cbar-num { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12.5px; }

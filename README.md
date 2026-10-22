@@ -9,7 +9,7 @@ An interactive U.S. political map. It needs no build step: open `index.html` in 
   - The House delegation, with a percentage breakdown for every congressional district.
 - **2026 Midterm Forecast tab.** Win probabilities for all 35 Senate races, all 36 governor races, all 435 House seats, and big-city mayoral races. It also shows simulated chances of controlling each chamber. The national lean is neutral: no tilt toward either party.
 - **Races by State tab.** Only one state's governor, Senate and House races, plus a **My state** panel of its governor, senators and representatives that is available on every tab.
-- **Congress & Court tab.** Senate, House and Supreme Court views showing every senator, representative and justice: where each sits from liberal to conservative, and how each voted on specific issues, all from recorded votes.
+- **Congress & Court tab.** Senate, House, Supreme Court and Federal Circuits views showing every senator, representative, justice and federal appeals judge: where each sits from liberal to conservative, and how each voted on specific issues, all from recorded votes.
 - **Rubric & Methodology tab.** The full scoring rubric, weights and goalposts, state rankings, and every formula.
 
 ## Install it on your phone
@@ -159,6 +159,17 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
   - Each case's outcome is marked as the side generally described as conservative or liberal.
   - A justice's orientation is the share of their votes on the conservative side.
   - Cases that split the usual blocs (Fischer, Murthy, the FCC case) keep that from simply mirroring the appointing party.
+
+- **Federal Circuits view.** All 302 sitting judges of the 13 courts of appeals (179 active), from the Federal Judicial Center's public bulk files (`scripts/fetch-judges.mjs`, `npm run fetch:judges`).
+  - **Each judge shows:** their appointing president and party, Senate confirmation vote, ABA rating and earlier career.
+  - **Chart:** each circuit's party balance.
+  - **Issue positions:** these come from full-court (en banc) rulings, where every participating judge's vote is public. `data/circuit-cases.js` holds five such rulings, each lineup read from the court's own opinion or order:
+    - Harris v. Bessent (D.C. Circuit, firing of agency members)
+    - Bianchi v. Brown (4th Circuit, assault-weapons ban)
+    - Roake v. Brumley (5th Circuit, Ten Commandments in classrooms)
+    - Duncan v. Bonta (9th Circuit, magazine ban)
+    - V.O.S. Selections v. Trump (Federal Circuit, tariffs)
+  - **Coverage:** circuits without a recent en banc ruling on file show appointing party only. Appeals judges mostly decide cases in three-judge panels, so no full voting record across issues exists for them.
 
 ## Local leaders and New England towns
 
