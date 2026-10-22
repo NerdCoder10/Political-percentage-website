@@ -1,4 +1,4 @@
-// "Congress & Court" tab: every senator, representative and Supreme Court justice — political
+// "Congress & Court" tab: every senator, representative, Supreme Court justice and federal appeals judge — political
 // orientation and positions on specific issues, both taken from their recorded votes.
 // Uses the app's helpers through globalThis.PP (see js/app.js).
 (function () {
@@ -9,7 +9,7 @@
   const V = () => globalThis.CONGRESS_VOTES ?? { keyVotes: [], ideology: {}, votes: {} };
   const SC = () => globalThis.SCOTUS ?? { justices: [], cases: [] };
   const KEY = "pp-congress";
-  let ui = { chamber: "senate", state: "", party: "", q: "", sort: "ideology" };
+  let ui = { chamber: "senate", state: "", party: "", q: "", sort: "ideology", circuit: "", status: "active" };
   try { ui = { ...ui, ...JSON.parse(localStorage.getItem(KEY) ?? "{}") }; } catch { /* storage unavailable */ }
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(ui)); } catch { /* storage unavailable */ } };
 
@@ -140,31 +140,95 @@
       <p class="fine">Lineups are from each published opinion. "Part" means the justice agreed with the outcome only in part and is not counted either way.</p>`;
   }
 
+  // ---------------------------------------------------------------- Federal circuit courts
+  function circuitsView() {
+    const J = globalThis.JUDGES ?? { judges: [], votes: {}, circuits: [] };
+    const cases = globalThis.CIRCUIT_CASES ?? [];
+    const short = (c) => c.replace(" Circuit", "").replace("District of Columbia", "D.C.");
+    // Party balance of each circuit's active judges (by appointing president).
+    const comp = J.circuits.map((c) => {
+      const act = J.judges.filter((j) => j.circuit === c && j.status === "active");
+      return { c, D: act.filter((j) => j.party === "D").length, R: act.filter((j) => j.party === "R").length };
+    });
+    const max = Math.max(...comp.map((x) => x.D + x.R));
+    const bars = `<figure class="ideo-plot circuit-bars">
+      <div class="ideo-legend" aria-hidden="true"><span><i class="dot D"></i>Appointed by a Democratic president</span><span><i class="dot R"></i>Appointed by a Republican president</span></div>
+      ${comp.map((x) => `<div class="cbar"><span class="cbar-name">${esc(short(x.c))}</span><span class="cbar-track" role="img" aria-label="${esc(x.c)}: ${x.D} Democratic-appointed, ${x.R} Republican-appointed active judges">
+        <i class="D" style="width:${(100 * x.D) / max}%"></i><i class="R" style="width:${(100 * x.R) / max}%"></i></span><span class="cbar-num">${x.D} D · ${x.R} R</span></div>`).join("")}
+      <figcaption class="fine">Active judges only (senior judges hear fewer cases). Source: <a href="https://www.fjc.gov/history/judges" target="_blank" rel="noopener">Federal Judicial Center</a>.</figcaption>
+    </figure>`;
+    const q = ui.q.trim().toLowerCase();
+    const list = J.judges.filter((j) => (!ui.circuit || j.circuit === ui.circuit) && (ui.status === "all" || j.status === ui.status) && (!ui.party || j.party === ui.party) && (!q || j.name.toLowerCase().includes(q)));
+    const record = (j) => {
+      const v = J.votes[j.nid] ?? {};
+      let cons = 0, n = 0;
+      for (const [ci, x] of Object.entries(v)) { const c = cases[ci]; if (!c?.dir) continue; n++; if ((x === "Y") === (c.dir === "C")) cons++; }
+      return { v, cons, n };
+    };
+    const row = (j) => {
+      const r = record(j);
+      const pct = r.n ? (100 * r.cons) / r.n : null;
+      const mine = Object.entries(r.v);
+      return `<details class="member" id="judge-${j.nid}">
+        <summary>
+          ${P().face({ name: j.name, party: j.party }, "sm")}
+          <span class="mem-main"><b>${esc(j.name)}</b> <span class="chip ${j.party}">${j.party}</span>${j.chief ? ` <span class="tag">Chief Judge</span>` : ""}
+            <span class="mem-sub">${esc(short(j.circuit))} Circuit · ${j.status === "senior" ? `senior since ${j.senior}` : `active since ${j.since}`} · appointed by ${esc(j.appointedBy)}</span></span>
+          <span class="mem-ideo">
+            ${pct != null ? `<span class="ideo-track court" aria-hidden="true"><i class="${j.party}" style="left:${pct}%"></i></span>` : ""}
+            <span class="mem-label">${j.party === "R" ? "Republican" : "Democratic"} appointee${r.n ? ` · conservative side in ${r.cons} of ${r.n} en banc ${r.n === 1 ? "vote" : "votes"}` : ""}</span>
+          </span>
+        </summary>
+        <div class="mem-body">
+          <p class="fine">${j.born ? `Born ${j.born}. ` : ""}Confirmed ${j.vote === "voice" ? "by voice vote" : j.vote ? `${j.vote.ayes}–${j.vote.nays}` : ""}${j.aba ? ` · ABA rating: ${esc(j.aba)}` : ""}.${j.prior.length ? ` Before the court: ${j.prior.map(esc).join("; ")}.` : ""}</p>
+          ${mine.length ? `<div class="table-wrap"><table class="signals vote-table"><thead><tr><th>Issue</th><th>En banc case · a Yes vote would…</th><th>Vote</th></tr></thead><tbody>
+            ${mine.map(([ci, x]) => { const c = cases[ci]; return `<tr><td>${esc(c.issue)}</td><td><a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.name)}</a> (${c.year})<br><span class="fine">${esc(c.yes)}${c.dir ? ` <span class="tag">${c.dir === "C" ? "conservative side" : "liberal side"}</span>` : ""}</span></td><td class="vote ${x === "Y" ? "yea" : "nay"}"><b>${x === "Y" ? "Yes" : "No"}</b></td></tr>`; }).join("")}
+          </tbody></table></div>` : `<p class="fine">No full-court (en banc) vote on file for this judge yet. Circuit judges mostly decide cases in three-judge panels, so a full voting record across issues does not exist the way it does for Congress.</p>`}
+        </div></details>`;
+    };
+    return `<p class="lede">All ${J.judges.length} sitting judges of the 13 federal courts of appeals (${J.judges.filter((j) => j.status === "active").length} active, the rest senior). Orientation is shown two ways: the party of the president who appointed each judge, and, where the whole court voted together (en banc), which side the judge took on specific issues.</p>
+      ${bars}
+      <details class="kv-legend"><summary>The ${cases.length} en banc cases used for issue positions</summary>
+        <ul class="sources">${cases.map((c) => `<li><b>${esc(short(c.circuit))} Circuit · ${esc(c.issue)}:</b> <a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.name)}</a> (${c.year}). Yes = ${esc(c.yes)}. ${c.yesJudges.length}–${c.noJudges.length}.${c.dir ? ` Yes is the ${c.dir === "C" ? "conservative" : "liberal"} side.` : ""}${c.note ? ` ${esc(c.note)}` : ""}</li>`).join("")}</ul>
+        <p class="fine">Each lineup is from the court's own opinion or order. Only these circuits have a recent full-court ruling on file; the others' judges show their appointing president only.</p>
+      </details>
+      <p class="fine">${list.length} judges shown. Tap a name for details and votes.</p>
+      <div class="member-list">${list.map(row).join("") || `<p class="hint">No judges match.</p>`}</div>`;
+  }
+
   // ---------------------------------------------------------------- page
+  const body = (chamber) => (chamber === "court" ? courtView() : chamber === "circuits" ? circuitsView() : chamberView(chamber));
+
   function render(root) {
     const chamber = ui.chamber;
     const states = Object.values(M.states).sort((a, b) => a.name.localeCompare(b.name));
     root.innerHTML = `
       <h1>Congress &amp; Court</h1>
-      <p class="lede">Every senator, representative and Supreme Court justice: where each sits from liberal to conservative, and how each voted on specific issues. Everything here comes from their own recorded votes.</p>
+      <p class="lede">Every senator, representative, Supreme Court justice and federal appeals judge: where each sits from liberal to conservative, and how each voted on specific issues, from their own recorded votes.</p>
       <div class="races-head">
         <div class="seg" role="group" aria-label="Body">
-          ${[["senate", "Senate"], ["house", "House"], ["court", "Supreme Court"]].map(([k, l]) => `<button data-body="${k}" aria-pressed="${chamber === k}">${l}</button>`).join("")}
+          ${[["senate", "Senate", "Senate"], ["house", "House", "House"], ["court", "Supreme Court", "Court"], ["circuits", "Federal Circuits", "Circuits"]].map(([k, l, sh]) => `<button data-body="${k}" aria-pressed="${chamber === k}"><span class="tab-long">${l}</span><span class="tab-short">${sh}</span></button>`).join("")}
         </div>
-        ${chamber === "court" ? "" : `
+        ${chamber === "circuits" ? `
+        <label class="stat-pick">Circuit<select id="cg-circuit"><option value="">All circuits</option>${(globalThis.JUDGES?.circuits ?? []).map((c) => `<option value="${esc(c)}" ${c === ui.circuit ? "selected" : ""}>${esc(c.replace("District of Columbia", "D.C."))}</option>`).join("")}</select></label>
+        <div class="seg" role="group" aria-label="Status">${[["active", "Active"], ["senior", "Senior"], ["all", "All"]].map(([k, l]) => `<button data-status="${k}" aria-pressed="${ui.status === k}">${l}</button>`).join("")}</div>
+        <div class="seg" role="group" aria-label="Appointing party">${[["", "All"], ["D", "D"], ["R", "R"]].map(([k, l]) => `<button data-party="${k}" aria-pressed="${ui.party === k}">${l}</button>`).join("")}</div>
+        <input id="cg-q" type="search" placeholder="Find a judge…" value="${esc(ui.q)}" aria-label="Find a judge by name">` : chamber === "court" ? "" : `
         <label class="stat-pick">State<select id="cg-state"><option value="">All states</option>${states.map((s) => `<option value="${s.abbr}" ${s.abbr === ui.state ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select></label>
         <div class="seg" role="group" aria-label="Party">${[["", "All"], ["D", "D"], ["R", "R"], ["I", "I"]].map(([k, l]) => `<button data-party="${k}" aria-pressed="${ui.party === k}">${l}</button>`).join("")}</div>
         <label class="stat-pick">Sort<select id="cg-sort">${[["ideology", "Liberal → conservative"], ["name", "Name"], ["state", "State"]].map(([k, l]) => `<option value="${k}" ${ui.sort === k ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <input id="cg-q" type="search" placeholder="Find a name…" value="${esc(ui.q)}" aria-label="Find a member by name">`}
       </div>
-      <div id="cg-body">${chamber === "court" ? courtView() : chamberView(chamber)}</div>`;
+      <div id="cg-body">${body(chamber)}</div>`;
     root.querySelectorAll("[data-body]").forEach((b) => b.addEventListener("click", () => { ui.chamber = b.dataset.body; save(); render(root); }));
     root.querySelectorAll("[data-party]").forEach((b) => b.addEventListener("click", () => { ui.party = b.dataset.party; save(); render(root); }));
     $("#cg-state", root)?.addEventListener("change", (e) => { ui.state = e.target.value; save(); render(root); });
     $("#cg-sort", root)?.addEventListener("change", (e) => { ui.sort = e.target.value; save(); render(root); });
+    $("#cg-circuit", root)?.addEventListener("change", (e) => { ui.circuit = e.target.value; save(); render(root); });
+    root.querySelectorAll("[data-status]").forEach((b) => b.addEventListener("click", () => { ui.status = b.dataset.status; save(); render(root); }));
     $("#cg-q", root)?.addEventListener("input", (e) => {
       ui.q = e.target.value; save();
-      $("#cg-body", root).innerHTML = chamberView(ui.chamber);
+      $("#cg-body", root).innerHTML = body(ui.chamber);
     });
   }
 
