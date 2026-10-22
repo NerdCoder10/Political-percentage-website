@@ -5,6 +5,7 @@
 //               county shapes) and population (Wikipedia infobox). Places already among the 1,000
 //               largest cities are not repeated.
 //   • leaders — for each of those towns and each of the 1,000 cities: the head of the local
+//               (gaps filled from Wikidata's current "head of government" when unambiguous)
 //               government from the place's Wikipedia infobox — the mayor or, where there is none,
 //               the first selectman / selectboard chair (New England towns), supervisor, council
 //               president or town manager — with party when the infobox gives one.
@@ -152,6 +153,49 @@ for (const p of places) {
   if (r?.leader) found++;
   execFileSync("sleep", ["0.25"]);
 }
+// ---------------------------------------------------------------- gaps: Wikidata
+// Places whose Wikipedia infobox names no leader get the current "head of government" (P6, no end
+// date) from Wikidata, one query per state, refreshed weekly. A place with several current heads is
+// used only if exactly one has the latest start date; otherwise it stays unfilled rather than guessed.
+const STATE_QID = { AL: "Q173", AK: "Q797", AZ: "Q816", AR: "Q1612", CA: "Q99", CO: "Q1261", CT: "Q779", DE: "Q1393", DC: "Q3551781", FL: "Q812", GA: "Q1428", HI: "Q782", ID: "Q1221", IL: "Q1204", IN: "Q1415", IA: "Q1546", KS: "Q1558", KY: "Q1603", LA: "Q1588", ME: "Q724", MD: "Q1391", MA: "Q771", MI: "Q1166", MN: "Q1527", MS: "Q1494", MO: "Q1581", MT: "Q1212", NE: "Q1553", NV: "Q1227", NH: "Q759", NJ: "Q1408", NM: "Q1522", NY: "Q1384", NC: "Q1454", ND: "Q1207", OH: "Q1397", OK: "Q1649", OR: "Q824", PA: "Q1400", RI: "Q1387", SC: "Q1456", SD: "Q1211", TN: "Q1509", TX: "Q1439", UT: "Q829", VT: "Q16551", VA: "Q1370", WA: "Q1223", WV: "Q1371", WI: "Q1537", WY: "Q1214" };
+const wdParty = (p) => (/Democratic/.test(p) ? "D" : /Republican/.test(p) ? "R" : p ? "I" : "N");
+const wdTitle = (office) => {
+  const t = (office || "").replace(/\s+of\s+.*$/i, "").trim();
+  return /^mayor$/i.test(t) ? "Mayor" : /first select/i.test(t) ? "First Selectman" : t ? t.replace(/^./, (c) => c.toUpperCase()) : "Mayor";
+};
+let wdFilled = 0;
+const missingStates = new Set(places.filter((p) => !leaders[p.key]?.name).map((p) => p.st));
+for (const st of missingStates) {
+  const qid = STATE_QID[st];
+  if (!qid) continue;
+  const cache = path.join(RAW, `wikidata-${st}.csv`);
+  if (!fs.existsSync(cache) || Date.now() - fs.statSync(cache).mtimeMs > 7 * 864e5) {
+    const q = `SELECT ?place ?placeLabel ?headLabel ?start ?partyLabel ?officeLabel WHERE { ?place wdt:P131* wd:${qid} . ?place p:P6 ?s . ?s ps:P6 ?head . FILTER NOT EXISTS { ?s pq:P582 ?end } FILTER NOT EXISTS { ?head wdt:P570 ?died } OPTIONAL { ?s pq:P580 ?start } OPTIONAL { ?head wdt:P102 ?party } OPTIONAL { ?place wdt:P1313 ?office } SERVICE wikibase:label { bd:serviceParam wikibase:language "en". } }`;
+    try { execFileSync("curl", ["-sSf", "-m", "120", "-A", UA, "-G", "https://query.wikidata.org/sparql", "--data-urlencode", `query=${q}`, "-H", "Accept: text/csv", "-o", cache]); execFileSync("sleep", ["1"]); }
+    catch { console.error(`! wikidata ${st} failed`); continue; }
+  }
+  const rows = fs.readFileSync(cache, "utf8").split(/\r?\n/).slice(1).filter(Boolean).map((line) => {
+    const cells = []; let cur = "", q = false;
+    for (const ch of line) { if (ch === '"') q = !q; else if (ch === "," && !q) { cells.push(cur); cur = ""; } else cur += ch; }
+    cells.push(cur);
+    const [uri, place, head, start, party, office] = cells;
+    return { uri, place, head, start, party, office };
+  }).filter((r) => r.head && !/^Q\d+$/.test(r.head));
+  const byPlace = new Map();
+  for (const r of rows) (byPlace.get(r.place.toLowerCase()) ?? byPlace.set(r.place.toLowerCase(), []).get(r.place.toLowerCase())).push(r);
+  for (const p of places) {
+    if (p.st !== st || leaders[p.key]?.name) continue;
+    const cands = byPlace.get(p.name.toLowerCase());
+    if (!cands?.length) continue;
+    const dated = cands.filter((c) => c.start).sort((a, b) => b.start.localeCompare(a.start));
+    const pick = cands.length === 1 ? cands[0] : dated.length && (dated.length === 1 || dated[0].start !== dated[1].start) ? dated[0] : null;
+    if (!pick || (pick.start && pick.start < "2010")) continue; // ambiguous or likely stale
+    leaders[p.key] = { ...(leaders[p.key] ?? {}), name: pick.head, title: wdTitle(pick.office), party: wdParty(pick.party), source: "Wikidata", url: pick.uri.replace("http://", "https://"), checked: leaders[p.key]?.checked ?? now };
+    wdFilled++;
+  }
+}
+console.log(`Wikidata filled ${wdFilled} more places`);
+
 const towns = townRows.filter((t) => leaders[`${t.name}|${t.st}`]).map((t) => [t.name, t.st, leaders[`${t.name}|${t.st}`].pop ?? 0, t.lon, t.lat, t.fips, t.kind]);
 const sorted = Object.fromEntries(Object.entries(leaders).sort(([a], [b]) => a.localeCompare(b)));
 console.log(`local leaders: ${Object.values(sorted).filter((l) => l.name).length} of ${places.length} places (${found} found this run, ${lookups} lookups, ${failures} failed); towns on the map: ${towns.length}`);

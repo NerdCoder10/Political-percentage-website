@@ -435,7 +435,7 @@
     return `<article class="leader"><div class="leader-top">${face({ name: l.name, party: l.party }, "lg")}<div>
         <div class="leader-name">${esc(l.name)}${l.party && l.party !== "X" ? ` <span class="chip ${l.party}">${l.party}</span>` : ` <span class="chip X">Nonpartisan</span>`}</div>
         <div class="leader-office">${esc(l.title)} of ${esc(c[0])}</div>
-        <div class="fine">Source: <a href="${esc(l.url)}" target="_blank" rel="noopener">Wikipedia</a> (the ${esc(c[0])} article's infobox).</div></div></div></article>`;
+        <div class="fine">Source: <a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.source)}</a>${l.source === "Wikipedia" ? ` (the ${esc(c[0])} article's infobox)` : " (current head of government)"}.</div></div></div></article>`;
   }
 
   // Mayors of the curated cities in a list, each expandable to a full profile.
@@ -649,10 +649,12 @@
     $("#view-method").hidden = tab !== "method";
     $("#view-stats").hidden = tab !== "stats";
     $("#view-races").hidden = tab !== "races";
+    $("#view-congress").hidden = tab !== "congress";
     if (tab === "midterms") renderMidterms();
     if (tab === "method" && !$("#method").innerHTML) renderMethod();
     if (tab === "stats") requestAnimationFrame(() => globalThis.renderStats?.($("#stats")));
     if (tab === "races") globalThis.renderRaces?.($("#races"));
+    if (tab === "congress") globalThis.renderCongress?.($("#congress-view"));
     if (tab === "map") requestAnimationFrame(() => go(view, { animate: false, push: false }));
     currentTab = tab;
     setHash();
@@ -677,7 +679,7 @@
   function fromHash() {
     const [kind, arg] = decodeURIComponent(location.hash.slice(1)).split("/");
     if (kind === "races") { if (M.states[arg]) setTrackedState(arg); go({ level: "nation" }, { animate: false, push: false }); showTab("races"); return; }
-    if (kind === "midterms" || kind === "method" || kind === "stats") { go({ level: "nation" }, { animate: false, push: false }); showTab(kind); return; }
+    if (kind === "midterms" || kind === "method" || kind === "stats" || kind === "congress") { go({ level: "nation" }, { animate: false, push: false }); showTab(kind); return; }
     if (kind === "state" && M.states[arg]) return go({ level: "state", st: arg }, { animate: false });
     if (kind === "county" && ELECTIONS.counties[arg]) return go({ level: "county", st: ELECTIONS.counties[arg].st, fips: arg }, { animate: false });
     if (kind === "city") { const c = CITIES.find((x) => `${x[0]}|${x[1]}` === arg); if (c) return go({ level: "city", st: c[1], fips: c[5], city: c.idx }, { animate: false }); }

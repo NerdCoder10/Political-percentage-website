@@ -140,6 +140,9 @@ for (const m of globalThis.CONGRESS) {
 const govList = ["List of current United States governors"];
 for (const [st, g] of Object.entries(globalThis.GOVERNORS)) resolve(byName, M.personKey(g.name), { name: g.name, articles: govList, place: stateName[st] });
 for (const l of globalThis.NATIONAL_LEADERS) if (!l.roster) resolve(byName, M.personKey(l.name), { name: l.name, place: "United States" });
+// Supreme Court justices (data/scotus.js names each one's Wikipedia article).
+await import(path.join(ROOT, "data/scotus.js"));
+for (const j of globalThis.SCOTUS.justices) resolve(byName, M.personKey(j.name), { name: j.name, wiki: j.wiki.replace(/_/g, " ") });
 for (const [k, mayor] of Object.entries(globalThis.MAYORS)) {
   const [city] = k.split("|");
   resolve(byName, M.personKey(mayor.name), { name: mayor.name, articles: [`List of mayors of ${city}`], place: city });
