@@ -2,7 +2,7 @@
 
 An interactive U.S. political map. It needs no build step: open `index.html` in a browser.
 
-- **Map & Leaders tab.** A full-screen U.S. map colored red or blue by each state's current political lean. Toss-ups (a lean within 3 points of even) are gray. Click a state, then any county or city dot, to drill down. Zoomed into a state, cities with a mayor on file show the mayor's photo (party-colored ring), and the state and county panels list their mayors. The **Zoom to a city or town** menu, or tapping any dot, zooms in to that place and shows its local leader. That is the mayor, or for New England towns the first selectman, selectboard chair or town manager; places with none listed say "No mayor there". Every level shows:
+- **Map & Leaders tab.** A full-screen U.S. map colored red or blue by each state's current political lean. A **Districts** option divides every state into its voting districts: U.S. House (colored by lean), State Senate or State House (colored by the current member's party); tap a district for its member. Toss-ups (a lean within 3 points of even) are gray. Click a state, then any county or city dot, to drill down. Zoomed into a state, cities with a mayor on file show the mayor's photo (party-colored ring), and the state and county panels list their mayors. The **Zoom to a city or town** menu, or tapping any dot, zooms in to that place and shows its local leader. That is the mayor, or for New England towns the first selectman, selectboard chair or town manager; places with none listed say "No mayor there". Every level shows:
   - **Republican / Democratic / Independent / Other popular-vote percentages**, from the lean algorithm.
   - **Current leaders** (President and national leadership, governors, all 100 senators, all 435 House members, mayors, county executives), each with a **short biography, qualification score and possible next moves**.
   - The **1,000-point Government Performance Rubric** for the nation and every state.
@@ -147,6 +147,13 @@ The forecast uses **no polls**: no head-to-head race polls, generic ballot or ap
 - **Turnout:** 0.75 × the 2024 vote, the average midterm drop-off in 2018 and 2022.
 
 **Following races:** tap ☆ next to any race, then the **Following** filter shows only your races. The list is saved on the device.
+
+## State legislators and voting districts
+
+- **State legislators:** every current state senator and state representative (about 7,300) comes from [Open States](https://open.pluralpolicy.com/data/)' public bulk files (`scripts/fetch-state-legislators.mjs`), refreshed daily. Each state's page and the My state panel show both chambers' party balance and every member, with photos and official pages.
+- **District boundaries:** `scripts/build-districts.mjs` (`npm run build:districts`) builds them from the Census Bureau's 2024 cartographic boundary files: 119th-Congress districts and state legislative districts. They are projected like the base map and simplified for phones. Each layer is a separate file (0.3–0.8 MB compressed), loaded only when chosen.
+- **Matching members to districts:** members are matched to districts by name. Word order, punctuation and leading zeros are ignored, so "Barnstable, Dukes and Nantucket" = "Barnstable-Dukes-Nantucket District". About 99% of districts match; the rest are mostly vacant seats.
+- **Nebraska** has a one-house legislature, so it has no State House districts.
 
 ## Congress & Court tab
 

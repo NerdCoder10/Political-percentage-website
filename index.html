@@ -54,7 +54,13 @@
       <div class="seg" role="group" aria-label="Map coloring">
         <button data-color="states" aria-pressed="true">States</button>
         <button data-color="counties" aria-pressed="false">Counties</button>
+        <button data-color="districts" aria-pressed="false">Districts</button>
       </div>
+      <select id="district-layer" class="district-layer" aria-label="Which districts" hidden>
+        <option value="cd">U.S. House</option>
+        <option value="sldu">State Senate</option>
+        <option value="sldl">State House</option>
+      </select>
       <label class="city-zoom" id="city-zoom" hidden>
         <span class="city-zoom-icon" aria-hidden="true">🔍</span>
         <select id="city-zoom-select" aria-label="Zoom in to a city and its mayor"></select>
@@ -134,6 +140,7 @@
   <script src="data/generated/house2024.js"></script>
   <script src="data/generated/congress.js"></script>
   <script src="data/generated/cities.js"></script>
+  <script src="data/generated/state-legislators.js"></script>
   <script src="data/generated/local.js"></script>
   <script src="data/leaders.js"></script>
   <script src="data/state-indicators.js"></script>
