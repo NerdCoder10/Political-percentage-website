@@ -46,6 +46,7 @@
   const svg = d3.select(mapEl).append("svg").attr("role", "img").attr("aria-label", "United States political map");
   const root = svg.append("g");
   const gCounties = root.append("g");
+  const gDistricts = root.append("g").attr("class", "districts");
   const gStates = root.append("g");
   const borders = root.append("path").attr("class", "state-borders").attr("d", path(stateMesh));
   const selOutline = root.append("path").attr("class", "state-outline-sel");
@@ -119,14 +120,109 @@
     showTip(e, `${c[0]}, ${c[1]}`, cityLean(c.idx), `<div>${l ? `${esc(l.title)} ${esc(l.name)}${l.party && l.party !== "X" ? ` <span class="chip ${l.party}">${l.party}</span>` : ""}` : "No mayor there"}</div>`);
   }
 
+  // ------------------------------------------------------------------ voting districts
+  // U.S. House (119th Congress) and state legislative districts from the Census Bureau's 2024
+  // boundary files; each layer's file is loaded only when it is first shown.
+  let distLayer = "cd";
+  const DIST_LABEL = { cd: "U.S. House", sldu: "State Senate", sldl: "State House" };
+  const distFeatures = {};
+  const loading = {};
+  function loadDistricts(layer) {
+    if (distFeatures[layer]) return Promise.resolve(distFeatures[layer]);
+    return (loading[layer] ??= new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = `data/generated/districts-${layer}.js?v=${globalThis.DATA_VERSION?.version ?? ""}`;
+      s.onload = () => { const t = globalThis.DISTRICTS[layer]; resolve((distFeatures[layer] = topojson.feature(t, t.objects.d).features)); };
+      s.onerror = () => { delete loading[layer]; reject(new Error("districts unavailable")); };
+      document.head.append(s);
+    }));
+  }
+  // Match legislators to a district: the same words in any order ("Barnstable, Dukes and Nantucket"
+  // = "Barnstable-Dukes-Nantucket District"), leading zeros ignored ("Merrimack 06" = "Merrimack 6").
+  const normDist = (x) => String(x ?? "").toLowerCase()
+    .replace(/\b(state|senate|house|assembly|senatorial|legislative|representative|delegates?|district|of|no|and|the)\b/g, " ")
+    .replace(/\b0+(\d)/g, "$1").split(/[^a-z0-9]+/).filter(Boolean).sort().join(" ");
+  const legIndex = {};
+  function legislatorsFor(layer, f) {
+    const { st, code, name } = f.properties;
+    const chamber = layer === "sldu" ? "upper" : "lower";
+    const key = `${layer}|${st}`;
+    legIndex[key] ??= (STATE_LEGISLATORS?.states?.[st]?.[chamber] ?? []).map((l) => [normDist(l[2]), normDist(String(l[2]).replace(/[AB]$/, "")), l]);
+    const want = new Set([normDist(name), normDist(code)]);
+    let hit = legIndex[key].filter(([a]) => want.has(a));
+    if (!hit.length) hit = legIndex[key].filter(([, b]) => want.has(b)); // Idaho-style seats "1A"/"1B" in district 1
+    return hit.map(([, , l]) => ({ name: l[0], party: l[1], district: l[2], photo: l[3], page: l[4] }));
+  }
+  const cdNumber = (code) => (code === "00" || code === "98" ? 0 : +code);
+  function districtInfo(layer, f) {
+    const { st, code, name } = f.properties;
+    if (layer === "cd") {
+      const d = cdNumber(code), rep = M.representative(st, d);
+      return { title: `${M.states[st].name} ${d === 0 ? "at-large" : `District ${d}`}`, lean: M.districtLean(st, d), people: rep ? [{ name: rep.name, party: rep.party, id: rep.id }] : [] };
+    }
+    const people = legislatorsFor(layer, f);
+    const parties = new Set(people.map((p) => p.party));
+    return { title: `${M.states[st].name} · ${name}`, people, party: !people.length ? "vacant" : parties.size === 1 ? [...parties][0] : "split" };
+  }
+  const partyWord = { D: "Democrat", R: "Republican", I: "Independent", N: "Nonpartisan" };
+  function districtTip(e, f) {
+    const info = districtInfo(distLayer, f);
+    const who = info.people.length ? info.people.map((p) => `<div>${esc(p.name)} <span class="chip ${p.party === "N" ? "X" : p.party}">${p.party}</span></div>`).join("") : "<div>Vacant</div>";
+    if (info.lean) return showTip(e, info.title, info.lean, who);
+    tooltip.hidden = false;
+    tooltip.innerHTML = `<strong>${esc(info.title)}</strong>${who}`;
+    const x = Math.min(e.clientX + 14, innerWidth - tooltip.offsetWidth - 8);
+    tooltip.style.left = x + "px"; tooltip.style.top = e.clientY + 14 + "px";
+  }
+  async function paintDistricts() {
+    const show = colorMode === "districts";
+    gDistricts.style("display", show ? null : "none");
+    $("#district-layer").hidden = !show;
+    // Legislative districts are colored by the member's party rather than by lean.
+    const partyMode = show && distLayer !== "cd";
+    const legend = document.querySelector(".legend");
+    legend.classList.toggle("party-legend", partyMode);
+    legend.querySelector(".legend-labels").innerHTML = partyMode ? "<span>Republican</span><span>Split / vacant</span><span>Democrat</span>" : "<span>R +40</span><span>Toss-up (±3)</span><span>D +40</span>";
+    legend.querySelector(".legend-note").textContent = partyMode ? `${DIST_LABEL[distLayer]} districts, colored by the current member's party · tap one for its member` : show ? "U.S. House districts, colored by lean · tap one for its representative" : "Current lean (algorithm) · click any state, county or city";
+    if (!show) return;
+    let features;
+    try { features = await loadDistricts(distLayer); } catch { toast("District map couldn't load — check your connection."); return; }
+    if (colorMode !== "districts") return;
+    const layer = distLayer;
+    gDistricts.selectAll("path").data(features, (f) => `${layer}|${f.id}`).join("path")
+      .attr("class", (f) => { const i = layer === "cd" ? null : districtInfo(layer, f); return `district${i ? ` party-${i.party}` : ""}`; })
+      .attr("d", path)
+      .attr("fill", (f) => (layer === "cd" ? fillFor(districtInfo(layer, f).lean) : null))
+      .classed("dim", (f) => view.st && f.properties.st !== view.st)
+      .classed("sel", (f) => view.dist?.layer === layer && view.dist.id === f.id)
+      .on("click", (e, f) => { e.stopPropagation(); go({ level: "state", st: f.properties.st, dist: { layer, id: f.id } }); })
+      .on("mousemove", districtTip)
+      .on("mouseleave", hideTip);
+  }
+  $("#district-layer").addEventListener("change", (e) => { distLayer = e.target.value; if (view.dist) view.dist = null; paintMap(); renderPanel(); });
+  function toast(msg) {
+    const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t);
+    setTimeout(() => t.remove(), 3500);
+  }
+
   let colorMode = "states";
   function paintMap() {
     const sel = view.st;
-    const showCounties = colorMode === "counties" || !!sel;
+    const districts = colorMode === "districts";
+    const showCounties = !districts && (colorMode === "counties" || !!sel);
+    // Nebraska has one legislative chamber, so it has no State House districts.
+    const noLower = (f) => districts && distLayer === "sldl" && M.stateByFips[f.id] === "NE";
     statePaths
-      .attr("fill", (f) => (colorMode === "counties" || M.stateByFips[f.id] === sel ? "transparent" : fillFor(stateLean[M.stateByFips[f.id]])))
+      .attr("fill", (f) => (noLower(f) ? "var(--surface-2)" : districts || colorMode === "counties" || M.stateByFips[f.id] === sel ? "transparent" : fillFor(stateLean[M.stateByFips[f.id]])))
       .classed("dim", (f) => sel && M.stateByFips[f.id] !== sel && colorMode === "states")
-      .style("pointer-events", (f) => (colorMode === "counties" || M.stateByFips[f.id] === sel ? "none" : null));
+      .style("pointer-events", (f) => (noLower(f) ? null : districts || colorMode === "counties" || M.stateByFips[f.id] === sel ? "none" : null))
+      .on("mousemove", (e, f) => {
+        if (!noLower(f)) return showTip(e, M.states[M.stateByFips[f.id]].name, stateLean[M.stateByFips[f.id]]);
+        tooltip.hidden = false;
+        tooltip.innerHTML = "<strong>Nebraska</strong><div>One-house (unicameral) legislature: choose State Senate districts to see its 49 members.</div>";
+        tooltip.style.left = Math.min(e.clientX + 14, innerWidth - tooltip.offsetWidth - 8) + "px"; tooltip.style.top = e.clientY + 14 + "px";
+      });
+    paintDistricts();
     countyPaths
       .style("display", (f) => (showCounties && (colorMode === "counties" || ELECTIONS.counties[f.id].st === sel) ? null : "none"))
       .attr("fill", (f) => fillFor(countyLean[f.id]))
@@ -179,12 +275,13 @@
   let view = { level: "nation" };
   function go(next, { animate = true, push = true } = {}) {
     if (next.st && push) setTrackedState(next.st);
-    view = { level: next.level, st: next.st ?? null, fips: next.fips ?? null, city: next.city ?? null };
+    view = { level: next.level, st: next.st ?? null, fips: next.fips ?? null, city: next.city ?? null, dist: next.dist ?? null };
     hideTip();
     paintMap();
     renderPanel();
     renderCrumbs();
     if (view.level === "nation") fit([[0, 0], [975, 610]], 0.96, animate);
+    else if (view.level === "state" && view.dist) { const f = distFeatures[view.dist.layer]?.find((x) => x.id === view.dist.id); if (f) fit(path.bounds(f), 0.6, animate); }
     else if (view.level === "state") fit(path.bounds(stateFeatures.find((f) => M.stateByFips[f.id] === view.st)), 0.9, animate);
     else if (view.level === "county") fit(path.bounds(countyFeatures.find((f) => f.id === view.fips)), 0.5, animate);
     else if (view.level === "city") {
@@ -201,6 +298,7 @@
     if (view.st) parts.push(`<button data-nav="state:${view.st}">${esc(M.states[view.st].name)}</button>`);
     if (view.fips && (view.level === "county" || view.level === "city")) parts.push(`<button data-nav="county:${view.fips}">${esc(ELECTIONS.counties[view.fips].n)}</button>`);
     if (view.level === "city") parts.push(`<button data-nav="city:${view.city}">${esc(CITIES[view.city][0])}</button>`);
+    if (view.dist) { const f = distFeatures[view.dist.layer]?.find((x) => x.id === view.dist.id); if (f) parts.push(`<button>${esc(f.properties.name || view.dist.id)}</button>`); }
     $("#crumbs").innerHTML = parts.join('<span class="sep">›</span>');
     renderCityZoom();
   }
@@ -363,7 +461,7 @@
   // ------------------------------------------------------------------ panels
   function renderPanel() {
     const el = $("#panel");
-    el.innerHTML = view.level === "nation" ? nationPanel() : view.level === "state" ? statePanel(view.st)
+    el.innerHTML = view.dist ? districtPanel(view.dist) : view.level === "nation" ? nationPanel() : view.level === "state" ? statePanel(view.st)
       : view.level === "county" ? countyPanel(view.fips) : cityPanel(view.city);
     el.scrollTop = 0;
   }
@@ -418,6 +516,7 @@
         ${M.REDISTRICTED_2026.includes(st) ? `<p class="note">${esc(s.name)} adopted new congressional maps for 2026. District percentages here reflect the 2024 lines.</p>` : ""}
       </section>` : ""}
       ${mayorsSection(citiesByState.get(st) ?? [], `Mayors in ${s.name}`)}
+      ${legislatureSection(st)}
       <section><h3>Largest cities</h3>
         <ul class="link-list">${topCities.map((c) => `<li><button data-nav="city:${c.idx}">${esc(c[0])}</button>${miniLean(cityLean(c.idx))}</li>`).join("")}</ul>
         <p class="fine">Every county in ${esc(s.name)} is clickable on the map, and the city dots are clickable too.</p>
@@ -454,6 +553,61 @@
         <p><button class="btn-ghost" data-nav="city:${c.idx}">Open ${esc(c[0])} on the map</button></p></details>`).join("")}
       <p class="fine">Full profiles for about 85 of the largest cities. Every other city and town on the map shows its mayor or first selectman when you tap it or use Zoom to a city.</p></section>`;
   }
+
+  // ------------------------------------------------------------------ state legislators
+  const legFace = (p, size = "sm") => (p.photo
+    ? `<img class="face ${p.party === "N" ? "X" : p.party} ${size}" src="${esc(p.photo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-initials="${esc(initials(p.name))}">`
+    : `<span class="avatar ${p.party === "N" ? "X" : p.party} ${size}" aria-hidden="true">${esc(initials(p.name))}</span>`);
+  const legRow = (p) => `<li class="leg-row">${legFace(p)}<span><b>${esc(p.name)}</b> <span class="chip ${p.party === "N" ? "X" : p.party}">${p.party === "N" ? "Nonpartisan" : p.party}</span><span class="del-sub">District ${esc(p.district)}${p.page ? ` · <a href="${esc(p.page)}" target="_blank" rel="noopener">official page</a>` : ""}</span></span></li>`;
+  function legislatureSection(st) {
+    const L = STATE_LEGISLATORS?.states?.[st];
+    if (!L) return "";
+    const people = (arr) => arr.map((l) => ({ name: l[0], party: l[1], district: l[2], photo: l[3], page: l[4] }));
+    const chamber = (label, arr, layer) => {
+      if (!arr.length) return "";
+      const c = arr.reduce((o, l) => ((o[l[1]] = (o[l[1]] ?? 0) + 1), o), {});
+      const n = arr.length;
+      return `<div class="leg-chamber">
+        <div class="leg-head"><b>${label}</b><span class="num">${["D", "R", "I", "N"].filter((k) => c[k]).map((k) => `<b class="txt-${k === "N" ? "X" : k}">${c[k]} ${k === "N" ? "nonpartisan" : k}</b>`).join(" · ")}</span></div>
+        <div class="split">${["D", "I", "N", "R"].filter((k) => c[k]).map((k) => `<i style="width:${(100 * c[k]) / n}%;background:var(--${k === "D" ? "dem" : k === "R" ? "rep" : k === "I" ? "ind" : "oth"})"></i>`).join("")}</div>
+        <details><summary>All ${n} members</summary><ul class="leg-list">${people(arr).map(legRow).join("")}</ul></details>
+        <button class="btn-ghost" data-dist-layer="${layer}" data-st="${st}">Show ${label} districts on the map</button>
+      </div>`;
+    };
+    return `<section><h3>State legislature</h3>
+      ${chamber(st === "NE" ? "Legislature (unicameral)" : "State Senate", L.upper, "sldu")}
+      ${chamber(st === "CA" || st === "NV" || st === "NY" || st === "WI" ? "State Assembly" : st === "VA" || st === "MD" || st === "WV" ? "House of Delegates" : "State House", L.lower, "sldl")}
+      <p class="fine">Current members from <a href="https://open.pluralpolicy.com/data/" target="_blank" rel="noopener">Open States</a> (updated daily).</p>
+    </section>`;
+  }
+  function districtPanel(dist) {
+    const f = distFeatures[dist.layer]?.find((x) => x.id === dist.id);
+    if (!f) return statePanel(view.st);
+    const info = districtInfo(dist.layer, f);
+    const st = f.properties.st;
+    const back = `<p><button class="btn-ghost" data-nav="state:${st}">← ${esc(M.states[st].name)}</button></p>`;
+    if (dist.layer === "cd") {
+      const d = cdNumber(f.properties.code);
+      const member = M.representative(st, d);
+      const race = races[`${st}-${d === 0 ? "AL" : String(d).padStart(2, "0")}`];
+      return `${back}<div class="kicker">Congressional district · ${esc(M.states[st].name)}</div><h2>${esc(info.title.replace(`${M.states[st].name} `, ""))}</h2>
+        ${leanBlock(info.lean, M.REDISTRICTED_2026.includes(st) ? `${M.states[st].name} adopted a new map for 2026; these are the 2024 lines.` : "")}
+        <section><h3>U.S. Representative</h3>${member ? leaderCard(member, `U.S. Representative · ${st}-${d === 0 ? "AL" : d}`, "representative", { forecast: race, districtMargin: race?.baseline }) : `<div class="note">Vacant.</div>`}</section>
+        ${race ? `<section><h3>2026 race</h3>${matchup(race)}<p class="fine">${Math.round(race.pD * 100)}% D · ${Math.round((1 - race.pD) * 100)}% R · ${esc(race.rating.label)}. Predicted vote: ${shortVote(race)}.</p><button class="btn-ghost" data-nav="races:${st}">Research ${st} races</button></section>` : ""}`;
+    }
+    return `${back}<div class="kicker">${DIST_LABEL[dist.layer]} district · ${esc(M.states[st].name)}</div><h2>${esc(f.properties.name)}</h2>
+      <section><h3>${info.people.length > 1 ? "Members" : "Member"}</h3>
+        ${info.people.length ? `<ul class="leg-list">${info.people.map(legRow).join("")}</ul>` : `<div class="note">No current member found for this district (vacant, or newly drawn).</div>`}
+      </section>
+      <p class="fine">Boundaries: U.S. Census Bureau 2024 state legislative districts. Members: <a href="https://open.pluralpolicy.com/data/" target="_blank" rel="noopener">Open States</a>.</p>`;
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-dist-layer]");
+    if (!b) return;
+    colorMode = "districts"; distLayer = b.dataset.distLayer; $("#district-layer").value = distLayer;
+    document.querySelectorAll("[data-color]").forEach((x) => x.setAttribute("aria-pressed", x.dataset.color === "districts"));
+    showTab("map"); go({ level: "state", st: b.dataset.st });
+  });
 
   function districtRow(st, d) {
     const rep = M.representative(st, d);
@@ -561,6 +715,7 @@
 
   document.querySelectorAll("[data-color]").forEach((b) => b.addEventListener("click", () => {
     colorMode = b.dataset.color;
+    if (colorMode !== "districts" && view.dist) { view.dist = null; renderPanel(); }
     document.querySelectorAll("[data-color]").forEach((x) => x.setAttribute("aria-pressed", x === b));
     paintMap();
   }));
@@ -596,7 +751,7 @@
     if (!st) {
       el.innerHTML = `<div class="drawer-head"><h2>My state</h2><button class="btn-ghost" data-close-drawer>Close</button></div>
         <label class="stat-pick">Choose your state<select id="delegation-state"><option value="">Select…</option>${opts}</select></label>
-        <p class="hint">Your governor, senators and representatives will stay one tap away on every tab.</p>`;
+        <p class="hint">Your governor, senators, representatives and state legislators will stay one tap away on every tab.</p>`;
     } else {
       const s = M.states[st];
       const sens = M.senators(st);
@@ -622,6 +777,7 @@
           return m ? person(m, `${label}`, "representative", raceFor(id)) : `<div class="del-person vacant"><span class="chip X">—</span> ${label}: vacant</div>`;
         }).join("")}
         ${st === "DC" ? person(M.representative("DC", 0), "Delegate (non-voting)", "representative", null, "") : ""}
+        ${legislatureSection(st)}
         <p class="fine">Tap a name for the biography, qualifications and 2026 outlook.</p>`;
     }
     el.querySelector("#delegation-state")?.addEventListener("change", (e) => setTrackedState(e.target.value));
