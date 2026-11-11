@@ -38,6 +38,8 @@ const page = (links) => (links || "").split(";").find((u) => /\.(gov|us)\b|legis
 
 const out = {};
 let total = 0;
+const bpPerson = new Map(); // legislator row → their Ballotpedia profile URL (from Open States' sources)
+const wdPerson = new Map(); // legislator row → Wikidata item (Q…), when Open States has one
 const previous = (() => { try { return Object.keys(JSON.parse(fs.readFileSync(path.join(ROOT, "data/generated/state-legislators.js"), "utf8").replace(/^[\s\S]*?= /, "").replace(/;\s*$/, "")).states ?? {}); } catch { return []; } })();
 for (const [, st] of globalThis.STATES_META) {
   if (st === "DC") continue;
@@ -52,6 +54,8 @@ for (const [, st] of globalThis.STATES_META) {
     const chamber = p.current_chamber === "lower" ? "lower" : p.current_chamber === "upper" || p.current_chamber === "legislature" ? "upper" : null;
     if (!chamber) continue;
     s[chamber].push([p.name, party(p.current_party), p.current_district, p.image || "", page(p.links)]);
+    if (p.wikidata) wdPerson.set(s[chamber].at(-1), p.wikidata);
+    bpPerson.set(s[chamber].at(-1), ((p.sources || "") + ";" + (p.links || "")).split(";").find((u) => /^https:\/\/ballotpedia\.org\/[^/]+$/.test(u)) ?? null);
     total++;
   }
   const byDistrict = (a, b) => a[2].localeCompare(b[2], "en", { numeric: true }) || a[0].localeCompare(b[0]);
@@ -91,14 +95,16 @@ for (const [layer, chamber] of [["sldu", "upper"], ["sldl", "lower"]]) {
     const want = new Set([normDist(name), normDist(code)]);
     const list = out[st][chamber];
     if (list.some((l) => want.has(normDist(l[2])) || want.has(normDist(String(l[2]).replace(/[AB]$/, ""))))) continue;
-    let text = null, url = null;
+    let text = null, url = null, profile = null;
     for (const t of bpTitles(st, chamber, code, name)) {
       const cache = path.join(BP, `${t.replace(/[^\w-]/g, "_")}.html`);
       if (REFRESH || !fs.existsSync(cache) || Date.now() - fs.statSync(cache).mtimeMs > 864e5) {
         try { execFileSync("curl", ["-sSfL", "-m", "60", "-A", UA, "-o", cache, `https://ballotpedia.org/${t}`]); execFileSync("sleep", ["1"]); }
         catch { continue; }
       }
-      text = fs.readFileSync(cache, "utf8").replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
+      const raw = fs.readFileSync(cache, "utf8");
+      profile = raw.match(/represented by <a href="(https:\/\/ballotpedia\.org\/[^"]+)"/)?.[1] ?? null;
+      text = raw.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, "").replace(/<[^>]+>/g, " ").replace(/&nbsp;|&#160;/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
       url = `https://ballotpedia.org/${t}`;
       break;
     }
@@ -108,6 +114,7 @@ for (const [layer, chamber] of [["sldu", "upper"], ["sldl", "lower"]]) {
     if (won) incoming[`${st}|${chamber}|${normDist(name)}`] = [won[1].trim(), bpParty(won[2]), won[3]];
     if (cur && !/vacant/i.test(cur[1])) {
       list.push([cur[1].trim(), bpParty(cur[2]), name, "", url, "Ballotpedia"]);
+      if (profile) bpPerson.set(list.at(-1), profile); // their own profile page, e.g. "Walter_Price_(Florida)"
       filled.members++;
     } else if (/\bDistrict [\w -]+ is vacant\b|Incumbent Vacant/.test(text)) {
       // e.g. "District 149 is vacant. It was last represented by Donnie Brown (R)."
@@ -123,6 +130,97 @@ for (const [layer, chamber] of [["sldu", "upper"], ["sldl", "lower"]]) {
   }
 }
 console.log(`Ballotpedia: ${filled.members} members added, ${filled.vacant} vacancies confirmed, ${Object.keys(incoming).length} Nov. 3 winners; still unknown: ${filled.missing.join(", ") || "none"}`);
+
+// ---------------------------------------------------------------- photos: Ballotpedia
+// Legislators with no photo in Open States, or whose photo is only on plain http:// (blocked as
+// mixed content on this https site), get the official photo from their Ballotpedia profile, which
+// is served over https. Results are remembered in scripts/raw/openstates/photos.json (rechecked
+// after 30 days; 7 days when none was found); a run looks up at most BP_PHOTO_LOOKUPS profiles.
+const PHOTOS_FILE = path.join(RAW, "photos.json");
+const photoCache = (() => { try { return JSON.parse(fs.readFileSync(PHOTOS_FILE, "utf8")); } catch { return {}; } })();
+const MAX_PHOTO_LOOKUPS = +(process.env.BP_PHOTO_LOOKUPS ?? 200);
+let photoLookups = 0, photosFound = 0;
+const SKIP_PHOTO = /silhouette|placeholder|default|BP-Initials|no[-_]?image|Ballotpedia[-_]?logo/i;
+function bpPhoto(url) {
+  const hit = photoCache[url];
+  if (hit && Date.now() - Date.parse(hit.checked) < (hit.img ? 30 : 7) * 864e5) return hit.img;
+  if (photoLookups >= MAX_PHOTO_LOOKUPS) return hit?.img ?? null;
+  photoLookups++;
+  let html = "";
+  try { html = execFileSync("curl", ["-sSfL", "-m", "45", "-A", UA, url], { maxBuffer: 32 << 20 }).toString(); execFileSync("sleep", ["0.6"]); }
+  catch { return hit?.img ?? null; } // not found or network trouble: keep what we had
+  const img = html.match(/<img src="(https:\/\/s3\.amazonaws\.com\/ballotpedia-api[^"]+)" class="widget-img"/)?.[1] ?? null;
+  photoCache[url] = { img: img && !SKIP_PHOTO.test(img) ? img : null, checked: new Date().toISOString() };
+  return photoCache[url].img;
+}
+for (const st of Object.keys(out)) for (const chamber of ["upper", "lower"]) for (const row of out[st][chamber]) {
+  if (row[3] && row[3].startsWith("https:")) continue;
+  // Profile from Open States' sources; otherwise Ballotpedia's own "First_Last" page name.
+  const url = bpPerson.get(row) ?? `https://ballotpedia.org/${row[0].replace(/\s+/g, "_")}`;
+  const img = bpPhoto(url);
+  if (img) { row[3] = img; photosFound++; }
+}
+// Still without an https photo: (1) the same http:// photo over https, when the legislature's site
+// serves it; (2) the photo on the person's Wikidata item (Wikimedia Commons, https).
+function httpsWorks(url) {
+  const key = `https:${url}`;
+  const hit = photoCache[key];
+  if (hit && Date.now() - Date.parse(hit.checked) < 30 * 864e5) return hit.img;
+  let ok = false;
+  try { ok = /^2\d\d image\//.test(execFileSync("curl", ["-sSL", "-m", "20", "-A", UA, "-o", "/dev/null", "-w", "%{http_code} %{content_type}", url.replace(/^http:/, "https:")]).toString()); } catch { /* no https */ }
+  photoCache[key] = { img: ok ? url.replace(/^http:/, "https:") : null, checked: new Date().toISOString() };
+  return photoCache[key].img;
+}
+const needWd = [];
+for (const st of Object.keys(out)) for (const chamber of ["upper", "lower"]) for (const row of out[st][chamber]) {
+  if (row[3]?.startsWith("https:")) continue;
+  const up = row[3]?.startsWith("http:") ? httpsWorks(row[3]) : null;
+  if (up) { row[3] = up; photosFound++; continue; }
+  if (wdPerson.has(row)) needWd.push(row);
+}
+if (needWd.length) {
+  const ids = [...new Set(needWd.map((r) => wdPerson.get(r)))];
+  const q = `SELECT ?item ?img WHERE { VALUES ?item { ${ids.map((i) => `wd:${i}`).join(" ")} } ?item wdt:P18 ?img }`;
+  try {
+    const res = JSON.parse(execFileSync("curl", ["-sSf", "-m", "120", "-A", UA, "-G", "https://query.wikidata.org/sparql", "--data-urlencode", `query=${q}`, "-H", "Accept: application/sparql-results+json"]).toString());
+    const img = new Map(res.results.bindings.map((b) => [b.item.value.split("/").pop(), b.img.value.replace(/^http:/, "https:") + "?width=250"]));
+    for (const row of needWd) { const u = img.get(wdPerson.get(row)); if (u) { row[3] = u; photosFound++; } }
+  } catch { console.error("! wikidata photos unavailable this run"); }
+}
+// (3) Last resort: the portrait on the member's own legislature page (Open States' official link),
+// recognized by its label ("representative", "senator", "Member Picture", a profile/headshot class).
+// Placeholders, seals and logos are rejected, and the image must load over https.
+const PORTRAIT = /<img\b[^>]*>/gi;
+const isPortrait = (tag) => /alt="[^"]*(representative|senator|member picture|member photo|portrait|headshot|photo of)[^"]*"|class="[^"]*(profile-photo|member-photo|headshot|portrait)[^"]*"/i.test(tag);
+const FAKE = /profile\.png|placeholder|silhouette|no[-_]?photo|seal|logo|dome|blank|default/i;
+function officialPhoto(pageUrl) {
+  const key = `official:${pageUrl}`;
+  const hit = photoCache[key];
+  if (hit && Date.now() - Date.parse(hit.checked) < (hit.img ? 30 : 7) * 864e5) return hit.img;
+  let img = null;
+  try {
+    const html = execFileSync("curl", ["-sSfL", "-m", "45", "-A", UA, pageUrl], { maxBuffer: 32 << 20 }).toString();
+    for (const tag of html.match(PORTRAIT) ?? []) {
+      if (!isPortrait(tag)) continue;
+      const src = tag.match(/\bsrc="([^"]+)"/)?.[1];
+      if (!src || FAKE.test(src)) continue;
+      const abs = new URL(src, pageUrl).href.replace(/^http:/, "https:");
+      const ok = /^2\d\d image\//.test(execFileSync("curl", ["-sSL", "-m", "20", "-A", UA, "-o", "/dev/null", "-w", "%{http_code} %{content_type}", abs]).toString());
+      if (ok) { img = abs; break; }
+    }
+    execFileSync("sleep", ["0.5"]);
+  } catch { /* site refused or unreachable */ }
+  photoCache[key] = { img, checked: new Date().toISOString() };
+  return img;
+}
+for (const st of Object.keys(out)) for (const chamber of ["upper", "lower"]) for (const row of out[st][chamber]) {
+  if (row[3]?.startsWith("https:") || !row[4] || /ballotpedia\.org/.test(row[4])) continue;
+  const img = officialPhoto(row[4]);
+  if (img) { row[3] = img; photosFound++; }
+}
+fs.writeFileSync(PHOTOS_FILE, JSON.stringify(photoCache));
+const noPhoto = Object.values(out).flatMap((s) => [...s.upper, ...s.lower]).filter((r) => !r[3] || !r[3].startsWith("https:")).length;
+console.log(`photos: ${photosFound} from Ballotpedia (${photoLookups} lookups); ${noPhoto} legislators still without an https photo`);
 
 if (previous.length && Object.keys(out).length < previous.length * 0.8) { console.error("too few states this run; keeping the previous file"); process.exit(0); }
 fs.writeFileSync(path.join(ROOT, "data/generated/state-legislators.js"), `// Generated by scripts/fetch-state-legislators.mjs from Open States and Ballotpedia — do not edit by hand.\nglobalThis.STATE_LEGISLATORS = ${JSON.stringify({ fetched: new Date().toISOString(), source: { name: "Open States (Plural Policy), current legislators; gaps from Ballotpedia district pages", url: "https://open.pluralpolicy.com/data/" }, states: out, vacancies, incoming })};\n`);
