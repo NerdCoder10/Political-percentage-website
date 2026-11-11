@@ -187,35 +187,101 @@ if (needWd.length) {
     for (const row of needWd) { const u = img.get(wdPerson.get(row)); if (u) { row[3] = u; photosFound++; } }
   } catch { console.error("! wikidata photos unavailable this run"); }
 }
-// (3) Last resort: the portrait on the member's own legislature page (Open States' official link),
-// recognized by its label ("representative", "senator", "Member Picture", a profile/headshot class).
+// (3) The portrait on the member's own legislature page (Open States' official link), recognized
+// by its label ("representative", "senator", "Member Picture", the member's last name), a
+// profile/headshot class, or a legislature photo folder (RepPics, SenPics, Images/Legislators).
 // Placeholders, seals and logos are rejected, and the image must load over https.
 const PORTRAIT = /<img\b[^>]*>/gi;
-const isPortrait = (tag) => /alt="[^"]*(representative|senator|member picture|member photo|portrait|headshot|photo of)[^"]*"|class="[^"]*(profile-photo|member-photo|headshot|portrait)[^"]*"/i.test(tag);
-const FAKE = /profile\.png|placeholder|silhouette|no[-_]?photo|seal|logo|dome|blank|default/i;
-function officialPhoto(pageUrl) {
-  const key = `official:${pageUrl}`;
+const FAKE = /profile\.png|placeholder|silhouette|no[-_]?photo|seal|logo|dome|blank|default|maps?\//i;
+const fold = (x) => (x ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const isPortrait = (tag, last) => /alt="[^"]*(representative|senator|member picture|member photo|portrait|headshot|photo of)[^"]*"|class="[^"]*(profile-photo|member-photo|headshot|portrait)[^"]*"|src="[^"]*(RepPics|SenPics|Images\/Legislators|MemberPhoto|headshots|Imaging\/Member)/i.test(tag)
+  || (last && fold(tag.match(/alt="([^"]*)"/)?.[1]).includes(fold(last)));
+const isImage = (url) => { try { return /^2\d\d image\//.test(execFileSync("curl", ["-sSL", "-m", "20", "-A", UA, "-o", "/dev/null", "-w", "%{http_code} %{content_type}", url]).toString()); } catch { return false; } };
+function cached(key, find) {
   const hit = photoCache[key];
   if (hit && Date.now() - Date.parse(hit.checked) < (hit.img ? 30 : 7) * 864e5) return hit.img;
   let img = null;
-  try {
-    const html = execFileSync("curl", ["-sSfL", "-m", "45", "-A", UA, pageUrl], { maxBuffer: 32 << 20 }).toString();
-    for (const tag of html.match(PORTRAIT) ?? []) {
-      if (!isPortrait(tag)) continue;
-      const src = tag.match(/\bsrc="([^"]+)"/)?.[1];
-      if (!src || FAKE.test(src)) continue;
-      const abs = new URL(src, pageUrl).href.replace(/^http:/, "https:");
-      const ok = /^2\d\d image\//.test(execFileSync("curl", ["-sSL", "-m", "20", "-A", UA, "-o", "/dev/null", "-w", "%{http_code} %{content_type}", abs]).toString());
-      if (ok) { img = abs; break; }
-    }
-    execFileSync("sleep", ["0.5"]);
-  } catch { /* site refused or unreachable */ }
+  try { img = find(); } catch { /* site refused or unreachable */ }
   photoCache[key] = { img, checked: new Date().toISOString() };
   return img;
 }
+const get = (url) => execFileSync("curl", ["-sSfL", "-m", "45", "-A", UA, url], { maxBuffer: 32 << 20 }).toString();
+function officialPhoto(pageUrl, last) {
+  return cached(`official2:${pageUrl}`, () => {
+    const html = get(pageUrl);
+    execFileSync("sleep", ["0.5"]);
+    for (const tag of html.match(PORTRAIT) ?? []) {
+      if (!isPortrait(tag, last)) continue;
+      const src = tag.match(/\b(?:data-)?src="([^"]+)"/)?.[1];
+      if (!src || FAKE.test(src)) continue;
+      const abs = new URL(src, pageUrl).href.replace(/^http:/, "https:");
+      if (isImage(abs)) return abs;
+    }
+    return null;
+  });
+}
+// Some states' Open States links point at an old session's page or at none. Vermont: the member's
+// page for the current biennium (from the legislature's own roster); Utah: the legislature's photo
+// folder, keyed by the member code in the page link; Florida: the House's member roster.
+const lastOf = (name) => name.replace(/,?\s+(Jr\.?|Sr\.?|II|III|IV)$/i, "").split(/\s+/).pop();
+const rosterCache = {};
+function roster(st) {
+  if (st in rosterCache) return rosterCache[st];
+  const r = (rosterCache[st] = []);
+  try {
+    if (st === "VT") for (const ch of ["House", "Senate"]) for (const p of JSON.parse(get(`https://legislature.vermont.gov/people/loadAll/2026/${ch}`)).data)
+      r.push({ last: p.LastName, district: p.District, page: `https://legislature.vermont.gov/people/single/2026/${p.PersonID}` });
+    if (st === "FL") {
+      const html = get("https://www.flhouse.gov/Sections/Representatives/representatives.aspx");
+      for (const m of html.matchAll(/data-src="(\/FileStores\/Web\/Imaging\/Member\/\d+\.jpg)"[\s\S]{0,400}?<h5>\s*([^<,]+),\s*([^<]+?)\s*<\/h5>/g))
+        r.push({ last: m[2].trim(), first: m[3].trim(), img: `https://www.flhouse.gov${m[1]}` });
+    }
+    if (st === "NM") for (const t of ["R", "S"]) {
+      const html = get(`https://www.nmlegis.gov/Members/Legislator_List?T=${t}`);
+      for (const m of html.matchAll(/src="\.\.\/(Images\/Legislators\/(?:House|Senate)\/[A-Z]+\.jpg)"[^>]*alt="([^"]+)"/g))
+        r.push({ last: m[2], img: `https://www.nmlegis.gov/${m[1]}` });
+    }
+  } catch { console.error(`! ${st} roster unavailable this run`); }
+  return r;
+}
+const sameDist = (a, b) => normDist(a) === normDist(b);
 for (const st of Object.keys(out)) for (const chamber of ["upper", "lower"]) for (const row of out[st][chamber]) {
-  if (row[3]?.startsWith("https:") || !row[4] || /ballotpedia\.org/.test(row[4])) continue;
-  const img = officialPhoto(row[4]);
+  if (row[3]?.startsWith("https:")) continue;
+  const last = lastOf(row[0]);
+  let img = null;
+  if (st === "VT") {
+    const p = roster("VT").find((p) => fold(p.last) === fold(last) && sameDist(p.district, row[2]));
+    if (p) img = officialPhoto(p.page, last);
+  } else if (st === "FL" && chamber === "lower") {
+    const p = roster("FL").find((p) => fold(p.last) === fold(last) && fold(row[0]).startsWith(fold(p.first).split(/\s/)[0]));
+    if (p && cached(`roster:${p.img}`, () => (isImage(p.img) ? p.img : null))) img = p.img;
+  } else if (st === "NM") {
+    const p = roster("NM").filter((p) => fold(p.last) === fold(last) && p.img.includes(chamber === "upper" ? "/Senate/" : "/House/"));
+    if (p.length === 1 && cached(`roster:${p[0].img}`, () => (isImage(p[0].img) ? p[0].img : null))) img = p[0].img;
+  } else if (st === "UT" && /\/(?:rep|sen)\/([A-Z]+)\/?$/.test(row[4] ?? "")) {
+    const u = `https://le.utah.gov/images/legislator/${row[4].match(/\/([A-Z]+)\/?$/)[1]}.jpg`;
+    img = cached(`roster:${u}`, () => (isImage(u) ? u : null));
+  }
+  if (!img && row[4] && !/ballotpedia\.org/.test(row[4])) img = officialPhoto(row[4], last);
+  if (img) { row[3] = img; photosFound++; }
+}
+// (4) The lead image of the member's Wikipedia article, when the article is about a legislator of
+// that state (checked in its first paragraphs) and the image sits in the infobox.
+for (const st of Object.keys(out)) for (const chamber of ["upper", "lower"]) for (const row of out[st][chamber]) {
+  if (row[3]?.startsWith("https:")) continue;
+  const img = cached(`wikipedia:${st}:${row[0]}`, () => {
+    for (const title of [`${row[0]} (politician)`, row[0]]) {
+      let html;
+      try { html = get(`https://en.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, "_"))}`); } catch { continue; }
+      execFileSync("sleep", ["1"]);
+      const lead = (html.match(/<p[ >][\s\S]*?<\/p>/g) ?? []).slice(0, 3).join(" ").replace(/<[^>]+>/g, " ");
+      if (!lead.includes(stateName[st]) || !/(House of Representatives|State Senate|Senate|House of Delegates|General Assembly|Assembly)/.test(lead) || !/(member|represent|senator)/i.test(lead)) continue;
+      const box = html.match(/<table class="infobox[\s\S]*?<\/table>/)?.[0] ?? "";
+      const src = box.match(/<img[^>]*\bsrc="(\/\/(?:upload|thumb)\.wikimedia\.org\/[^"?]+\.(?:jpe?g|png))/i)?.[1];
+      if (src && !FAKE.test(src) && isImage(`https:${src}`)) return `https:${src}`;
+    }
+    return null;
+  });
   if (img) { row[3] = img; photosFound++; }
 }
 fs.writeFileSync(PHOTOS_FILE, JSON.stringify(photoCache));
