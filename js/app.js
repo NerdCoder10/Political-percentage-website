@@ -139,7 +139,8 @@
   }
   // Match legislators to a district: the same words in any order ("Barnstable, Dukes and Nantucket"
   // = "Barnstable-Dukes-Nantucket District"), leading zeros ignored ("Merrimack 06" = "Merrimack 6").
-  const normDist = (x) => String(x ?? "").toLowerCase()
+  // The same rule is used by scripts/fetch-state-legislators.mjs to find districts Open States misses.
+  const normDist = (x) => String(x ?? "").toLowerCase().replace(/\b(north|south)\s+(east|west)\b/g, "$1$2") // "South East" = "Southeast"
     .replace(/\b(state|senate|house|assembly|senatorial|legislative|representative|delegates?|district|of|no|and|the)\b/g, " ")
     .replace(/\b0+(\d)/g, "$1").split(/[^a-z0-9]+/).filter(Boolean).sort().join(" ");
   const legIndex = {};
@@ -151,7 +152,15 @@
     const want = new Set([normDist(name), normDist(code)]);
     let hit = legIndex[key].filter(([a]) => want.has(a));
     if (!hit.length) hit = legIndex[key].filter(([, b]) => want.has(b)); // Idaho-style seats "1A"/"1B" in district 1
-    return hit.map(([, , l]) => ({ name: l[0], party: l[1], district: l[2], photo: l[3], page: l[4] }));
+    return hit.map(([, , l]) => ({ name: l[0], party: l[1], district: l[2], photo: l[3], page: l[4], source: l[5] }));
+  }
+  // Confirmed vacancies and November 3, 2026 winners (Ballotpedia), for districts with no member.
+  function vacancyFor(layer, f) {
+    const { st, name } = f.properties;
+    const chamber = layer === "sldu" ? "upper" : "lower";
+    const v = STATE_LEGISLATORS?.vacancies?.[st]?.[chamber]?.find((x) => normDist(x[0]) === normDist(name));
+    const won = STATE_LEGISLATORS?.incoming?.[`${st}|${chamber}|${normDist(name)}`];
+    return { vacant: v ? { url: v[1], last: v[2], why: v[3] } : null, incoming: won ? { name: won[0], party: won[1], date: won[2] } : null };
   }
   const cdNumber = (code) => (code === "00" || code === "98" ? 0 : +code);
   function districtInfo(layer, f) {
@@ -162,12 +171,14 @@
     }
     const people = legislatorsFor(layer, f);
     const parties = new Set(people.map((p) => p.party));
-    return { title: `${M.states[st].name} · ${name}`, people, party: !people.length ? "vacant" : parties.size === 1 ? [...parties][0] : "split" };
+    return { title: `${M.states[st].name} · ${name}`, people, ...vacancyFor(layer, f), party: !people.length ? "vacant" : parties.size === 1 ? [...parties][0] : "split" };
   }
   const partyWord = { D: "Democrat", R: "Republican", I: "Independent", N: "Nonpartisan" };
   function districtTip(e, f) {
     const info = districtInfo(distLayer, f);
-    const who = info.people.length ? info.people.map((p) => `<div>${esc(p.name)} <span class="chip ${p.party === "N" ? "X" : p.party}">${p.party}</span></div>`).join("") : "<div>Vacant</div>";
+    const who = (info.people.length ? info.people.map((p) => `<div>${esc(p.name)} <span class="chip ${p.party === "N" ? "X" : p.party}">${p.party}</span></div>`).join("")
+      : f.properties.st === "DC" ? "<div>D.C. Council ward (no state legislature)</div>" : `<div>Vacant${info.vacant?.last ? ` · last held by ${esc(info.vacant.last)}` : ""}</div>`)
+      + (info.incoming ? `<div class="fine">Won ${esc(info.incoming.date)}: ${esc(info.incoming.name)} (${info.incoming.party})</div>` : "");
     if (info.lean) return showTip(e, info.title, info.lean, who);
     tooltip.hidden = false;
     tooltip.innerHTML = `<strong>${esc(info.title)}</strong>${who}`;
@@ -558,17 +569,18 @@
   const legFace = (p, size = "sm") => (p.photo
     ? `<img class="face ${p.party === "N" ? "X" : p.party} ${size}" src="${esc(p.photo)}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" data-initials="${esc(initials(p.name))}">`
     : `<span class="avatar ${p.party === "N" ? "X" : p.party} ${size}" aria-hidden="true">${esc(initials(p.name))}</span>`);
-  const legRow = (p) => `<li class="leg-row">${legFace(p)}<span><b>${esc(p.name)}</b> <span class="chip ${p.party === "N" ? "X" : p.party}">${p.party === "N" ? "Nonpartisan" : p.party}</span><span class="del-sub">District ${esc(p.district)}${p.page ? ` · <a href="${esc(p.page)}" target="_blank" rel="noopener">official page</a>` : ""}</span></span></li>`;
+  const legRow = (p) => `<li class="leg-row">${legFace(p)}<span><b>${esc(p.name)}</b> <span class="chip ${p.party === "N" ? "X" : p.party}">${p.party === "N" ? "Nonpartisan" : p.party}</span><span class="del-sub">${/district/i.test(p.district) ? esc(p.district) : `District ${esc(p.district)}`}${p.page ? ` · <a href="${esc(p.page)}" target="_blank" rel="noopener">${p.source === "Ballotpedia" ? "Ballotpedia" : "official page"}</a>` : ""}</span></span></li>`;
   function legislatureSection(st) {
     const L = STATE_LEGISLATORS?.states?.[st];
     if (!L) return "";
     const people = (arr) => arr.map((l) => ({ name: l[0], party: l[1], district: l[2], photo: l[3], page: l[4] }));
     const chamber = (label, arr, layer) => {
       if (!arr.length) return "";
+      const vac = STATE_LEGISLATORS?.vacancies?.[st]?.[layer === "sldu" ? "upper" : "lower"]?.length ?? 0;
       const c = arr.reduce((o, l) => ((o[l[1]] = (o[l[1]] ?? 0) + 1), o), {});
       const n = arr.length;
       return `<div class="leg-chamber">
-        <div class="leg-head"><b>${label}</b><span class="num">${["D", "R", "I", "N"].filter((k) => c[k]).map((k) => `<b class="txt-${k === "N" ? "X" : k}">${c[k]} ${k === "N" ? "nonpartisan" : k}</b>`).join(" · ")}</span></div>
+        <div class="leg-head"><b>${label}</b><span class="num">${["D", "R", "I", "N"].filter((k) => c[k]).map((k) => `<b class="txt-${k === "N" ? "X" : k}">${c[k]} ${k === "N" ? "nonpartisan" : k}</b>`).join(" · ")}${vac ? ` · ${vac} vacant` : ""}</span></div>
         <div class="split">${["D", "I", "N", "R"].filter((k) => c[k]).map((k) => `<i style="width:${(100 * c[k]) / n}%;background:var(--${k === "D" ? "dem" : k === "R" ? "rep" : k === "I" ? "ind" : "oth"})"></i>`).join("")}</div>
         <details><summary>All ${n} members</summary><ul class="leg-list">${people(arr).map(legRow).join("")}</ul></details>
         <button class="btn-ghost" data-dist-layer="${layer}" data-st="${st}">Show ${label} districts on the map</button>
@@ -577,7 +589,7 @@
     return `<section><h3>State legislature</h3>
       ${chamber(st === "NE" ? "Legislature (unicameral)" : "State Senate", L.upper, "sldu")}
       ${chamber(st === "CA" || st === "NV" || st === "NY" || st === "WI" ? "State Assembly" : st === "VA" || st === "MD" || st === "WV" ? "House of Delegates" : "State House", L.lower, "sldl")}
-      <p class="fine">Current members from <a href="https://open.pluralpolicy.com/data/" target="_blank" rel="noopener">Open States</a> (updated daily).</p>
+      <p class="fine">Current members from <a href="https://open.pluralpolicy.com/data/" target="_blank" rel="noopener">Open States</a> (updated daily); seats it lacks are checked on Ballotpedia, which also confirms vacancies.</p>
     </section>`;
   }
   function districtPanel(dist) {
@@ -597,9 +609,13 @@
     }
     return `${back}<div class="kicker">${DIST_LABEL[dist.layer]} district · ${esc(M.states[st].name)}</div><h2>${esc(f.properties.name)}</h2>
       <section><h3>${info.people.length > 1 ? "Members" : "Member"}</h3>
-        ${info.people.length ? `<ul class="leg-list">${info.people.map(legRow).join("")}</ul>` : `<div class="note">No current member found for this district (vacant, or newly drawn).</div>`}
+        ${info.people.length ? `<ul class="leg-list">${info.people.map(legRow).join("")}</ul>`
+          : st === "DC" ? `<div class="note">Washington, D.C. has a city council instead of a state legislature; this is one of its eight wards.</div>`
+          : info.vacant ? `<div class="note"><b>Vacant.</b>${info.vacant.last ? ` Last held by ${esc(info.vacant.last)}.` : ""}${info.vacant.why ? ` The seat became vacant after ${esc(info.vacant.why)}.` : ""} <a href="${esc(info.vacant.url)}" target="_blank" rel="noopener">Source</a></div>`
+          : `<div class="note">No current member found for this district.</div>`}
+        ${info.incoming ? `<p class="fine"><b>${esc(info.incoming.name)}</b> (${info.incoming.party}) won this seat on ${esc(info.incoming.date)}.</p>` : ""}
       </section>
-      <p class="fine">Boundaries: U.S. Census Bureau 2024 state legislative districts. Members: <a href="https://open.pluralpolicy.com/data/" target="_blank" rel="noopener">Open States</a>.</p>`;
+      <p class="fine">Boundaries: U.S. Census Bureau 2024 state legislative districts. Members: <a href="https://open.pluralpolicy.com/data/" target="_blank" rel="noopener">Open States</a>, with gaps and vacancies checked against Ballotpedia.</p>`;
   }
   document.addEventListener("click", (e) => {
     const b = e.target.closest("[data-dist-layer]");
