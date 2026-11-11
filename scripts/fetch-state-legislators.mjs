@@ -37,7 +37,6 @@ const party = (p) => (/^Democratic/.test(p) ? "D" : /^Republican/.test(p) ? "R" 
 const page = (links) => (links || "").split(";").find((u) => /\.(gov|us)\b|legis|senate|house|assembly/i.test(u)) ?? (links || "").split(";")[0] ?? "";
 
 const out = {};
-let total = 0;
 const bpPerson = new Map(); // legislator row → their Ballotpedia profile URL (from Open States' sources)
 const wdPerson = new Map(); // legislator row → Wikidata item (Q…), when Open States has one
 const previous = (() => { try { return Object.keys(JSON.parse(fs.readFileSync(path.join(ROOT, "data/generated/state-legislators.js"), "utf8").replace(/^[\s\S]*?= /, "").replace(/;\s*$/, "")).states ?? {}); } catch { return []; } })();
@@ -56,7 +55,6 @@ for (const [, st] of globalThis.STATES_META) {
     s[chamber].push([p.name, party(p.current_party), p.current_district, p.image || "", page(p.links)]);
     if (p.wikidata) wdPerson.set(s[chamber].at(-1), p.wikidata);
     bpPerson.set(s[chamber].at(-1), ((p.sources || "") + ";" + (p.links || "")).split(";").find((u) => /^https:\/\/ballotpedia\.org\/[^/]+$/.test(u)) ?? null);
-    total++;
   }
   const byDistrict = (a, b) => a[2].localeCompare(b[2], "en", { numeric: true }) || a[0].localeCompare(b[0]);
   s.upper.sort(byDistrict); s.lower.sort(byDistrict);
@@ -131,6 +129,56 @@ for (const [layer, chamber] of [["sldu", "upper"], ["sldl", "lower"]]) {
 }
 console.log(`Ballotpedia: ${filled.members} members added, ${filled.vacant} vacancies confirmed, ${Object.keys(incoming).length} Nov. 3 winners; still unknown: ${filled.missing.join(", ") || "none"}`);
 
+// Ballotpedia's district pages can lag a resignation or an appointment, so members taken from them
+// are checked against the chamber's own roster where it is published as plain HTML: the Missouri
+// House (which marks open seats "Vacant") and the Ohio House (member cards by district).
+const fold = (x) => (x ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const officialRoster = {};
+const OFFICIAL_CHECK = {
+  "MO|lower": { name: "Missouri House of Representatives", url: "https://house.mo.gov/MemberGridCluster.aspx", parse(html) {
+    const r = {};
+    for (const m of html.matchAll(/<tr>(?:(?!<\/tr>)[\s\S])*?district=(\d+)" target="_top">([^<]*)<\/a><\/td><td[^>]*><a[^>]*>([^<]*)<\/a><\/td><td[^>]*>\d+<\/td><td[^>]*>\s*([A-Z]?)\s*<\/td>/g))
+      r[normDist(m[1])] = m[2].trim() === "Vacant" ? { vacant: true } : { name: `${m[3].trim()} ${m[2].trim()}`, party: m[4], page: `https://house.mo.gov/MemberDetails.aspx?year=2026&district=${m[1]}` };
+    return r;
+  } },
+  "OH|lower": { name: "Ohio House of Representatives", url: "https://www.ohiohouse.gov/members", parse(html) {
+    const r = {};
+    for (const card of html.split('class="media-container').slice(1)) {
+      const slug = card.match(/href="([a-z0-9-]+)"/)?.[1];
+      const name = card.match(/caption-text-line-1">([^<]+)</)?.[1]?.trim();
+      const d = card.match(/caption-text-line-2">District (\d+)\s*<span[^>]*>[^<]*<\/span>\s*([A-Z])/);
+      const img = card.match(/background-image:url\((\/assets\/people\/headshots\/[^)]+)\)/)?.[1];
+      if (slug && name && d) r[normDist(d[1])] = { name, party: d[2], page: `https://www.ohiohouse.gov/members/${slug}`, img: img ? `https://www.ohiohouse.gov${img}` : "" };
+    }
+    return r;
+  } },
+};
+const corrected = [];
+for (const [key, src] of Object.entries(OFFICIAL_CHECK)) {
+  const [st, chamber] = key.split("|");
+  const list = out[st]?.[chamber];
+  if (!list?.some((l) => l[5] === "Ballotpedia")) continue;
+  let roster;
+  try { roster = src.parse(execFileSync("curl", ["-sSfL", "-m", "60", "-A", UA, src.url], { maxBuffer: 32 << 20 }).toString()); } catch { console.error(`! ${src.name} roster unavailable this run`); continue; }
+  if (Object.keys(roster).length < 50) continue; // page layout changed: trust nothing from it
+  officialRoster[key] = roster;
+  for (const row of [...list]) {
+    if (row[5] !== "Ballotpedia") continue;
+    const o = roster[normDist(String(row[2]).replace(/^State (House|Senate) District /, ""))];
+    if (!o) continue;
+    if (o.vacant) {
+      list.splice(list.indexOf(row), 1);
+      ((vacancies[st] ??= {})[chamber] ??= []).push([row[2], src.url, `${row[0]} (${row[1]})`, null]);
+      corrected.push(`${st} ${row[2]}: ${row[0]} → vacant`);
+    } else if (fold(o.name) !== fold(row[0]) && !fold(o.name).includes(fold(row[0]).split(" ").pop())) {
+      corrected.push(`${st} ${row[2]}: ${row[0]} → ${o.name}`);
+      row[0] = o.name; row[1] = o.party === "D" ? "D" : o.party === "R" ? "R" : "I"; row[3] = o.img ?? ""; row[4] = o.page; row[5] = src.name;
+      bpPerson.delete(row);
+    }
+  }
+}
+if (corrected.length) console.log(`official rosters corrected: ${corrected.join("; ")}`);
+
 // ---------------------------------------------------------------- photos: Ballotpedia
 // Legislators with no photo in Open States, or whose photo is only on plain http:// (blocked as
 // mixed content on this https site), get the official photo from their Ballotpedia profile, which
@@ -193,7 +241,6 @@ if (needWd.length) {
 // Placeholders, seals and logos are rejected, and the image must load over https.
 const PORTRAIT = /<img\b[^>]*>/gi;
 const FAKE = /profile\.png|placeholder|silhouette|no[-_]?photo|seal|logo|dome|blank|default|maps?\//i;
-const fold = (x) => (x ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const isPortrait = (tag, last) => /alt="[^"]*(representative|senator|member picture|member photo|portrait|headshot|photo of)[^"]*"|class="[^"]*(profile-photo|member-photo|headshot|portrait)[^"]*"|src="[^"]*(RepPics|SenPics|Images\/Legislators|MemberPhoto|headshots|Imaging\/Member)/i.test(tag)
   || (last && fold(tag.match(/alt="([^"]*)"/)?.[1]).includes(fold(last)));
 const isImage = (url) => { try { return /^2\d\d image\//.test(execFileSync("curl", ["-sSL", "-m", "20", "-A", UA, "-o", "/dev/null", "-w", "%{http_code} %{content_type}", url]).toString()); } catch { return false; } };
@@ -236,6 +283,22 @@ function roster(st) {
       for (const m of html.matchAll(/data-src="(\/FileStores\/Web\/Imaging\/Member\/\d+\.jpg)"[\s\S]{0,400}?<h5>\s*([^<,]+),\s*([^<]+?)\s*<\/h5>/g))
         r.push({ last: m[2].trim(), first: m[3].trim(), img: `https://www.flhouse.gov${m[1]}` });
     }
+    if (st === "NJ") {
+      // The legislature's roster lists each member's bio id; the bio feed names their official photo.
+      const html = get("https://www.njleg.state.nj.us/legislative-roster");
+      const data = JSON.parse(html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)[1]);
+      const walk = (o) => { if (Array.isArray(o)) o.forEach(walk); else if (o && typeof o === "object") { if (o.Last_Name && o.BioLink) r.push({ last: o.Last_Name, first: o.First_Name, district: String(o.Roster_District), chamber: o.RosterHouseCode === "S" ? "upper" : "lower", bio: o.BioLink.match(/legislative-roster\/(\d+)/)?.[1] }); else Object.values(o).forEach(walk); } };
+      walk(data);
+    }
+    if (st === "IN") for (const u of ["https://indianahousedemocrats.org/members", "https://www.indianahouserepublicans.com/members"]) {
+      // Caucus member lists, whose portrait files are named "Last_First-123.jpg".
+      try { for (const m of get(u).matchAll(/data-src="(https:\/\/images\.squarespace-cdn\.com\/[^"]+\/([^"/]+)\.(?:jpe?g|png))"/gi)) r.push({ file: decodeURIComponent(m[2].replace(/\+/g, " ")), img: m[1] }); } catch { /* caucus site unavailable */ }
+    }
+    if (st === "MS") for (const [ch, f] of [["lower", "hr_membs.xml"], ["upper", "ss_membs.xml"]]) {
+      // The legislature's member index: name → member file (e.g. "house/ford_(54th).xml").
+      for (const m of get(`https://billstatus.ls.state.ms.us/members/${f}`).matchAll(/<M\d+_NAME>([^<]+)<\/M\d+_NAME>\s*<M\d+_LINK>([^<]+)<\/M\d+_LINK>/g))
+        r.push({ name: m[1].trim(), chamber: ch, file: `https://billstatus.ls.state.ms.us/members/${m[2].trim()}` });
+    }
     if (st === "NM") for (const t of ["R", "S"]) {
       const html = get(`https://www.nmlegis.gov/Members/Legislator_List?T=${t}`);
       for (const m of html.matchAll(/src="\.\.\/(Images\/Legislators\/(?:House|Senate)\/[A-Z]+\.jpg)"[^>]*alt="([^"]+)"/g))
@@ -255,6 +318,25 @@ for (const st of Object.keys(out)) for (const chamber of ["upper", "lower"]) for
   } else if (st === "FL" && chamber === "lower") {
     const p = roster("FL").find((p) => fold(p.last) === fold(last) && fold(row[0]).startsWith(fold(p.first).split(/\s/)[0]));
     if (p && cached(`roster:${p.img}`, () => (isImage(p.img) ? p.img : null))) img = p.img;
+  } else if (st === "NJ") {
+    const p = roster("NJ").find((p) => p.chamber === chamber && fold(p.last) === fold(last) && p.district === String(row[2]));
+    if (p?.bio) img = cached(`njbio:${p.bio}`, () => {
+      const pic = JSON.parse(get(`https://www.njleg.state.nj.us/api/legislatorData/legislatorBio/${p.bio}`)).flat().find((x) => x?.Picture)?.Picture;
+      const u = pic && `https://pub.njleg.state.nj.us${pic}`;
+      return u && isImage(u) ? u : null;
+    });
+  } else if (st === "IN") {
+    const first = fold(row[0]).split(" ")[0];
+    const p = roster("IN").find((p) => { const f = fold(p.file).replace(/-\d+$/, ""); return f.startsWith(`${fold(row[0].replace(/^\S+\s+/, ""))}_`) && f.split("_")[1]?.startsWith(first.slice(0, 4)); });
+    if (p) img = cached(`roster:${p.img}`, () => (isImage(p.img) ? p.img : null));
+  } else if (st === "MS") {
+    const p = roster("MS").filter((p) => p.chamber === chamber && fold(p.name) === fold(row[0]));
+    if (p.length === 1) img = cached(`msfile:${p[0].file}`, () => {
+      const xml = get(p[0].file);
+      const file = xml.match(/<IMG_NAME>([^<]+)</)?.[1];
+      const u = file && xml.match(/<DISTRICT>(\d+)</)?.[1] === String(row[2]) ? new URL(file, p[0].file).href : null;
+      return u && isImage(u) ? u : null;
+    });
   } else if (st === "NM") {
     const p = roster("NM").filter((p) => fold(p.last) === fold(last) && p.img.includes(chamber === "upper" ? "/Senate/" : "/House/"));
     if (p.length === 1 && cached(`roster:${p[0].img}`, () => (isImage(p[0].img) ? p[0].img : null))) img = p[0].img;
@@ -290,4 +372,4 @@ console.log(`photos: ${photosFound} from Ballotpedia (${photoLookups} lookups); 
 
 if (previous.length && Object.keys(out).length < previous.length * 0.8) { console.error("too few states this run; keeping the previous file"); process.exit(0); }
 fs.writeFileSync(path.join(ROOT, "data/generated/state-legislators.js"), `// Generated by scripts/fetch-state-legislators.mjs from Open States and Ballotpedia — do not edit by hand.\nglobalThis.STATE_LEGISLATORS = ${JSON.stringify({ fetched: new Date().toISOString(), source: { name: "Open States (Plural Policy), current legislators; gaps from Ballotpedia district pages", url: "https://open.pluralpolicy.com/data/" }, states: out, vacancies, incoming })};\n`);
-console.log(`state legislators: ${total} in ${Object.keys(out).length} states`);
+console.log(`state legislators: ${Object.values(out).reduce((n, s) => n + s.upper.length + s.lower.length, 0)} in ${Object.keys(out).length} states`);
